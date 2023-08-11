@@ -46,7 +46,6 @@ pub struct Expr {
 #[derive(Debug, PartialEq)]
 pub enum Node {
     Number(Number),
-    Op(Op),
     Expr(Expr),
 }
 
@@ -75,6 +74,63 @@ pub fn parse(tokens: &mut SplitWhitespace) -> Vec<Node> {
         None => panic!("No tokens found"),
     }
     nodes
+}
+
+pub fn eval(ast: &Vec<Node>) -> f64 {
+    let mut return_val: f64 = 0.0;
+    for node in ast {
+        match node {
+            Node::Number(n) => return_val += n.0,
+            Node::Expr(e) => {
+                let lhs = eval(&e.lhs);
+                let rhs = eval(&e.rhs);
+
+                return_val = match e.op {
+                    Op::Add => lhs + rhs,
+                    Op::Sub => lhs - rhs,
+                    Op::Mul => lhs * rhs,
+                    Op::Div => lhs / rhs,
+                    Op::Gt => {
+                        if lhs > rhs {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    Op::Lt => {
+                        if lhs < rhs {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return_val
+}
+
+pub trait Compile {
+    type Output;
+
+    fn from_ast(nodes: Vec<Node>) -> Self::Output;
+
+    fn from_source(source: &str) -> Self::Output {
+        let mut tokens = lex(source);
+        let nodes = parse(&mut tokens);
+        Self::from_ast(nodes)
+    }
+}
+
+pub struct Interpreter;
+
+impl Compile for Interpreter {
+    type Output = f64;
+
+    fn from_ast(nodes: Vec<Node>) -> Self::Output {
+        eval(&nodes)
+    }
 }
 
 #[cfg(test)]
@@ -139,5 +195,17 @@ mod tests {
                 }),
             ]
         )
+    }
+
+    #[test]
+    fn eval_expr() {
+        let mut tokens = lex("+ * -2 3 - 2 3.5");
+        let nodes = parse(&mut tokens);
+        assert_eq!(eval(&nodes), -7.5);
+    }
+
+    #[test]
+    fn interpret() {
+        assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5"), -7.5);
     }
 }
