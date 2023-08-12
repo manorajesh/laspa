@@ -1,4 +1,4 @@
-use std::{str::{SplitWhitespace}, collections::HashMap};
+use std::{str::SplitWhitespace, collections::HashMap};
 use regex::{Regex, Split};
 use lazy_static::lazy_static;
 
@@ -22,8 +22,6 @@ pub enum Op {
     Div,
     Gt, // Greater than
     Lt, // Less than
-    Assign,
-    Return,
 }
 
 impl Op {
@@ -35,8 +33,6 @@ impl Op {
             "/" => Self::Div,
             ">" => Self::Gt,
             "<" => Self::Lt,
-            "let" => Self::Assign,
-            "return" => Self::Return,
             _ => panic!("Invalid operator"),
         }
     }
@@ -61,12 +57,26 @@ pub struct ReturnExpr {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct MutateExpr {
+    pub name: String,
+    pub value: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct WhileExpr {
+    pub condition: Vec<Node>,
+    pub body: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Number(Number),
     BinaryExpr(BinaryExpr),
     BindExpr(BindExpr),
     Variable(String),
     ReturnExpr(ReturnExpr),
+    MutateExpr(MutateExpr),
+    WhileExpr(WhileExpr),
 }
 
 lazy_static! {
@@ -77,13 +87,24 @@ pub fn lex<'a>(s: &'a str) -> regex::Split<'static, 'a> {
     RE.split(s)
 }
 
-
 pub fn parse<'a>(tokens: &mut Split<'static, 'a>) -> Vec<Node> {
     let mut nodes = Vec::new();
-    for token in tokens {
+    while let Some(token) = tokens.next() {
+        // println!("token: {}", token);
+        if token.trim() == "end" {
+            break;
+        }
+
         if let Ok(mut new_nodes) = parse_sentence(&mut token.split_whitespace()) {
             nodes.append(&mut new_nodes);
         }
+
+        if let Some(Node::WhileExpr(e)) = nodes.last_mut() {
+            if e.body.is_empty() {
+                e.body = parse(tokens);
+            }
+        }
+        // println!("nodes: {:?}", nodes)
     }
     nodes
 }
@@ -110,15 +131,31 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
                     }));
                 }
 
-                ";" => {}
-
                 "//" => {
-                    while let Some(_) = tokens.next() {}
+                    return Ok(nodes);
                 }
 
                 "return" => {
                     nodes.push(Node::ReturnExpr(ReturnExpr {
                         value: parse_sentence(tokens).unwrap(),
+                    }));
+                }
+
+                ":=" => {
+                    let name = tokens.next().unwrap();
+                    let value = parse_sentence(tokens).unwrap();
+                    nodes.push(Node::MutateExpr(MutateExpr {
+                        name: name.to_string(),
+                        value,
+                    }));
+                }
+
+                "while" => {
+                    let condition = parse_sentence(tokens).unwrap();
+                    let body = Vec::new();
+                    nodes.push(Node::WhileExpr(WhileExpr {
+                        condition,
+                        body,
                     }));
                 }
 
@@ -153,7 +190,8 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                     Op::Sub => lhs - rhs,
                     Op::Mul => lhs * rhs,
                     Op::Div => lhs / rhs,
-                    _ => 0.0,
+                    Op::Gt => (lhs > rhs) as i32 as f64,
+                    Op::Lt => (lhs < rhs) as i32 as f64,
                 }
             }
             Node::BindExpr(e) => {
@@ -169,6 +207,21 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                 return_val = Some(eval(&e.value, globals));
                 0.0  // This doesn't matter, because we'll check return_val at the end
             }
+            Node::MutateExpr(e) => {
+                let value = eval(&e.value, globals);
+                if let Some(n) = globals.get_mut(&e.name) {
+                    *n = value;
+                } else {
+                    panic!("Variable not found: {}", e.name);
+                }
+                value
+            }
+            Node::WhileExpr(e) => {
+                while eval(&e.condition, globals) != 0.0 {
+                    eval(&e.body, globals);
+                }
+                0.0
+            }
         };
     }
 
@@ -183,7 +236,7 @@ pub trait Compile {
 
     fn from_source(source: &str) -> Self::Output {
         let mut tokens = lex(source);
-        // println!("tokens: {:?}", tokens);
+        // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
         let nodes = parse(&mut tokens);
         println!("ast: {:?}", nodes);
         Self::from_ast(nodes)
@@ -304,7 +357,30 @@ mod tests {
     }
 
     #[test]
+    fn return_only() {
+        assert_eq!(Interpreter::from_source("+ 2 3;return 1;"), 1.0);
+    }
+
+    #[test]
+    fn while_loop() {
+        assert_eq!(Interpreter::from_source(r#"
+        let x 0;
+        // let y 0;
+        
+        while < x 1000
+            let i 0;
+            while < i 100
+                := x + x 1;
+                := i + i 1;
+            end
+        end
+        
+        return + x i;
+        "#), 1100.0);
+    }
+
+    #[test]
     fn read_from_file() {
-        assert_eq!(Interpreter::from_file("examples/test.laspa"), 22.0);
+        assert_eq!(Interpreter::from_file("examples/test.laspa"), 1000.0);
     }
 }

@@ -1,6 +1,12 @@
-let x + 2 - 10 2
+let x 0;
+// let y 0;
 
-let y + x 2
-let z y;let u + 10 z
+while < x 1000
+    let i 0;
+    while < i 100
+        := x + x 1;
+        := i + i 1;
+    end
+end
 
-return u
+return x
