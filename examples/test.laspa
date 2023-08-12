@@ -1,12 +1,9 @@
-let x 0;
-// let y 0;
+let x 10;
+let y 2
 
-while < x 1000
-    let i 0;
-    while < i 100
-        := x + x 1;
-        := i + i 1;
-    end
+if < x y
+then
+    return y
 end
 
 return x

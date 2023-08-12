@@ -1,8 +1,10 @@
+#![warn(missing_docs)]
+
 use lazy_static::lazy_static;
 use regex::{Regex, Split};
 use std::{collections::HashMap, str::SplitWhitespace};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Number(pub f64);
 
 impl Number {
@@ -14,7 +16,7 @@ impl Number {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Op {
     Add,
     Sub,
@@ -38,37 +40,44 @@ impl Op {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BinaryExpr {
     pub op: Op,
     pub lhs: Vec<Node>,
     pub rhs: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BindExpr {
     pub name: String,
     pub value: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ReturnExpr {
     pub value: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MutateExpr {
     pub name: String,
     pub value: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct WhileExpr {
     pub condition: Vec<Node>,
     pub body: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
+pub struct IfExpr {
+    pub condition: Vec<Node>,
+    pub body: Vec<Node>,
+    pub else_body: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Node {
     Number(Number),
     BinaryExpr(BinaryExpr),
@@ -77,6 +86,7 @@ pub enum Node {
     ReturnExpr(ReturnExpr),
     MutateExpr(MutateExpr),
     WhileExpr(WhileExpr),
+    IfExpr(IfExpr),
 }
 
 lazy_static! {
@@ -102,6 +112,15 @@ pub fn parse(tokens: &mut Split<'static, '_>) -> Vec<Node> {
         if let Some(Node::WhileExpr(e)) = nodes.last_mut() {
             if e.body.is_empty() {
                 e.body = parse(tokens);
+            }
+        }
+
+        if let Some(Node::IfExpr(e)) = nodes.last_mut() {
+            if e.body.is_empty() {
+                let body = parse(tokens);
+                let mut body = body.split(|n| n == &Node::Variable("else".to_string()));
+                e.body = body.next().unwrap().to_vec();
+                e.else_body = body.next().unwrap_or(&Vec::new()).to_vec();
             }
         }
         // println!("nodes: {:?}", nodes)
@@ -153,6 +172,13 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
                 let condition = parse_sentence(tokens).unwrap();
                 let body = Vec::new();
                 nodes.push(Node::WhileExpr(WhileExpr { condition, body }));
+            }
+
+            "if" => {
+                let condition = parse_sentence(tokens).unwrap();
+                let body = Vec::new();
+                let else_body = Vec::new();
+                nodes.push(Node::IfExpr(IfExpr { condition, body, else_body }));
             }
 
             _ => match Number::new(t) {
@@ -214,6 +240,13 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                     eval(&e.body, globals);
                 }
                 0.0
+            }
+            Node::IfExpr(e) => {
+                if eval(&e.condition, globals) != 0.0 {
+                    eval(&e.body, globals)
+                } else {
+                    eval(&e.else_body, globals)
+                }
             }
         };
     }
@@ -390,7 +423,44 @@ mod tests {
     }
 
     #[test]
+    fn if_else() {
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
+        let x 0;
+        if < x 1
+            return 1;
+        else
+            return 2;
+        end
+        "#
+            ),
+            1.0
+        );
+    }
+
+    #[test]
+    fn only_if() {
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
+                let x 10;
+                let y 2
+                
+                if < x y
+                then
+                    return y
+                end
+                
+                return x
+        "#
+            ),
+            10.0
+        );
+    }
+
+    #[test]
     fn read_from_file() {
-        assert_eq!(Interpreter::from_file("examples/test.laspa"), 1000.0);
+        assert_eq!(Interpreter::from_file("examples/test.laspa"), 10.0);
     }
 }
