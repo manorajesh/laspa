@@ -16,10 +16,30 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Install grcov
+      run: |
+        rustup component add llvm-tools-preview
+        cargo install grcov
+
     - name: Build
       run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+
+    - name: Run tests with coverage
+      run: |
+        export CARGO_INCREMENTAL=0
+        export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
+        cargo test --verbose
+        zip -0 ccov.zip `find . \( -name "laspa*.gc*" \) -print`
+        grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info
+
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
       env:
