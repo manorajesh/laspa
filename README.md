@@ -2,6 +2,9 @@
 ![Build Status](https://github.com/manorajesh/laspa/actions/workflows/MacOS.yml/badge.svg)
 ![Build Status](https://github.com/manorajesh/laspa/actions/workflows/Linux.yml/badge.svg)
 ![Build Status](https://github.com/manorajesh/laspa/actions/workflows/Windows.yml/badge.svg)
+![Downloads](https://img.shields.io/crates/d/laspa)
+![Version](https://img.shields.io/crates/v/laspa)
+![License](https://img.shields.io/crates/l/laspa)
 
 A toy language I designed to be as easy as possible to implement. 
 Reminiscent of [lisp](https://en.wikipedia.org/wiki/Lisp_(programming_language)), 
