@@ -1,7 +1,5 @@
 # läspa
-![Build Status](https://github.com/manorajesh/laspa/actions/workflows/MacOS.yml/badge.svg)
-![Build Status](https://github.com/manorajesh/laspa/actions/workflows/Linux.yml/badge.svg)
-![Build Status](https://github.com/manorajesh/laspa/actions/workflows/Windows.yml/badge.svg)
+![Build Status](https://github.com/manorajesh/laspa/actions/workflows/rust.yml/badge.svg)
 ![Downloads](https://img.shields.io/crates/d/laspa)
 ![Version](https://img.shields.io/crates/v/laspa)
 ![License](https://img.shields.io/crates/l/laspa)
