@@ -2,6 +2,14 @@
 name = "laspa"
 version = "0.1.0"
 edition = "2021"
+description = "A simple Lisp-like language built with Rust"
+readme = "README.md"
+repository = "https://github.com/manorajesh/laspa"
+license = "MIT"
+keywords = ["language", "compiler", "interpreter", "programming-language", "parse"]
+categories = ["compilers"]
+exclude = ["examples", ".github"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
