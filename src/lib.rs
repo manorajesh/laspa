@@ -23,6 +23,7 @@ pub enum Op {
     Gt, // Greater than
     Lt, // Less than
     Assign,
+    Return,
 }
 
 impl Op {
@@ -35,6 +36,7 @@ impl Op {
             ">" => Self::Gt,
             "<" => Self::Lt,
             "let" => Self::Assign,
+            "return" => Self::Return,
             _ => panic!("Invalid operator"),
         }
     }
@@ -54,11 +56,17 @@ pub struct BindExpr {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct ReturnExpr {
+    pub value: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Number(Number),
     BinaryExpr(BinaryExpr),
     BindExpr(BindExpr),
     Variable(String),
+    ReturnExpr(ReturnExpr),
 }
 
 lazy_static! {
@@ -108,6 +116,12 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
                     while let Some(_) = tokens.next() {}
                 }
 
+                "return" => {
+                    nodes.push(Node::ReturnExpr(ReturnExpr {
+                        value: parse_sentence(tokens).unwrap(),
+                    }));
+                }
+
                 _ => {
                     match Number::new(t) {
                         Ok(n) => nodes.push(Node::Number(n)),
@@ -124,16 +138,17 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
 }
 
 pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
-    let mut return_val: f64 = 0.0;
+    let mut return_val: Option<f64> = None;
+    let mut last_val: f64 = 0.0;
 
     for node in ast {
-        match node {
-            Node::Number(n) => return n.0,
+        last_val = match node {
+            Node::Number(n) => n.0,
             Node::BinaryExpr(e) => {
                 let lhs = eval(&e.lhs, globals);
                 let rhs = eval(&e.rhs, globals);
 
-                return_val += match e.op {
+                match e.op {
                     Op::Add => lhs + rhs,
                     Op::Sub => lhs - rhs,
                     Op::Mul => lhs * rhs,
@@ -144,18 +159,22 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
             Node::BindExpr(e) => {
                 let value = eval(&e.value, globals);
                 globals.insert(e.name.clone(), value);
+                value
             }
-            Node::Variable(v) => {
-                // println!("globals: {:?}", globals);
-                return match globals.get(v) {
-                    Some(n) => *n,
-                    None => panic!("Variable not found: {v}"),
-                }
+            Node::Variable(v) => match globals.get(v) {
+                Some(n) => *n,
+                None => panic!("Variable not found: {v}"),
+            },
+            Node::ReturnExpr(e) => {
+                return_val = Some(eval(&e.value, globals));
+                0.0  // This doesn't matter, because we'll check return_val at the end
             }
-        }
+        };
     }
-    return_val
+
+    return_val.unwrap_or(last_val)
 }
+
 
 pub trait Compile {
     type Output;
@@ -252,7 +271,7 @@ mod tests {
 
     #[test]
     fn eval_expr() {
-        let mut tokens = lex("+ * -2 3 - 2 3.5");
+        let mut tokens = lex("return + * -2 3 - 2 3.5");
         let nodes = parse(&mut tokens);
         assert_eq!(eval(&nodes, &mut HashMap::new()), -7.5);
     }
@@ -266,7 +285,7 @@ mod tests {
     fn define_variable() {
         assert_eq!(Interpreter::from_source(r#"
             let x 1
-        "#), 0.0);
+        "#), 1.0);
     }
 
     #[test]
