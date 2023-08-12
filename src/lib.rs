@@ -11,24 +11,33 @@ point for learning how to write a programming language.
 
 ## Example
 ```ignore
-let x 10;
-while < x 100
-    := x + x 1;
+fn collatz (n)
+    while > n 1
+        if == % n 2 0
+            := n / n 2
+        else
+            := n + * 3 n 1
+        end
+        print n
+    end
+    return n
 end
 
-if < x 100
-    return 1;
-else
-    return 2;
-end
+let x 10;
+return collatz (x)
 ```
 
 ## Syntax
 The syntax is very simple. Each statement is separated by a newline or a semicolon. Comments are
 denoted by `//`. The language is **whitespace sensitive**, but indentation is **not** important. The language
-is also case sensitive.
+is also case sensitive. The language is also **RPN** (Reverse Polish Notation), so the operator
+comes after the operands. For example, `+ 1 2` would equal `3`. 
 
-**Warning**: There is no error handling yet, so if you make a mistake, the program will panic, or the result will be incorrect.
+### Code Blocks and Functions
+Every body of code must end (loops, if statements, functions, etc.)
+with the keyword `end`. Every function must start with `fn` and end with `end`. The parameters of a function are in the form `(param1 param2 ...)`.
+
+**Warning**: There is little error handling, so if you make a mistake, the program will panic, or the result will be incorrect.
 
 ## Usage
 The easiest way to use the language is to use the [`Interpreter`] struct. This will interpret the
@@ -76,6 +85,10 @@ pub enum Op {
     Gt,
     /// Less than
     Lt,
+    /// Modulo
+    Mod,
+    /// Equal to
+    Eqt
 }
 
 impl Op {
@@ -88,6 +101,8 @@ impl Op {
             "/" => Self::Div,
             ">" => Self::Gt,
             "<" => Self::Lt,
+            "%" => Self::Mod,
+            "==" => Self::Eqt,
             _ => panic!("Invalid operator"),
         }
     }
@@ -138,6 +153,27 @@ pub struct IfExpr {
     pub else_body: Vec<Node>,
 }
 
+/// The default function expression type. This is used to create a function (e.g. `fn sum (x y);return + x y;end` will create a function called `sum` that takes two arguments, `x` and `y`, and returns the sum of the two).
+#[derive(Debug, PartialEq, Clone)]
+pub struct FnExpr {
+    pub name: String,
+    pub args: Vec<Node>,
+    pub body: Vec<Node>,
+}
+
+/// The default function call expression type. This is used to call a function (e.g. `sum (1 2)` will call the function `sum` with the arguments `1` and `2`).
+#[derive(Debug, PartialEq, Clone)]
+pub struct FnCallExpr {
+    pub name: String,
+    pub args: Vec<Node>,
+}
+
+/// The default print expression type. This is used to print a value to stdout (e.g. `print 1` will print `1` to stdout).
+#[derive(Debug, PartialEq, Clone)]
+pub struct PrintStdoutExpr {
+    pub value: Vec<Node>,
+}
+
 /// The default node type. This is used to represent every element of the language. This is used to create an abstract syntax tree (AST).
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node {
@@ -149,6 +185,9 @@ pub enum Node {
     MutateExpr(MutateExpr),
     WhileExpr(WhileExpr),
     IfExpr(IfExpr),
+    FnExpr(FnExpr),
+    FnCallExpr(FnCallExpr),
+    PrintStdoutExpr(PrintStdoutExpr),
 }
 
 lazy_static! {
@@ -161,7 +200,7 @@ pub fn lex(s: &str) -> regex::Split<'static, '_> {
 }
 
 /// Parse tokens into an AST. This will parse a string of tokens into an AST, which can then be evaluated.
-pub fn parse(tokens: &mut Split<'static, '_>) -> Vec<Node> {
+pub fn parse(tokens: &mut Split<'static, '_>, functions: &mut HashMap<String, FnExpr>) -> Vec<Node> {
     let mut nodes = Vec::new();
     while let Some(token) = tokens.next() {
         // println!("token: {}", token);
@@ -169,22 +208,28 @@ pub fn parse(tokens: &mut Split<'static, '_>) -> Vec<Node> {
             break;
         }
 
-        if let Ok(mut new_nodes) = parse_sentence(&mut token.split_whitespace()) {
+        if let Ok(mut new_nodes) = parse_sentence(&mut token.split_whitespace(), functions) {
             nodes.append(&mut new_nodes);
         }
 
         if let Some(Node::WhileExpr(e)) = nodes.last_mut() {
             if e.body.is_empty() {
-                e.body = parse(tokens);
+                e.body = parse(tokens, functions);
             }
         }
 
         if let Some(Node::IfExpr(e)) = nodes.last_mut() {
             if e.body.is_empty() {
-                let body = parse(tokens);
+                let body = parse(tokens, functions);
                 let mut body = body.split(|n| n == &Node::Variable("else".to_string()));
                 e.body = body.next().unwrap().to_vec();
                 e.else_body = body.next().unwrap_or(&Vec::new()).to_vec();
+            }
+        }
+
+        if let Some(Node::FnExpr(e)) = nodes.last_mut() {
+            if e.body.is_empty() {
+                e.body = parse(tokens, functions);
             }
         }
         // println!("nodes: {:?}", nodes)
@@ -194,21 +239,21 @@ pub fn parse(tokens: &mut Split<'static, '_>) -> Vec<Node> {
 
 /// Parse a sentence into an AST. This will parse a sentence into an AST, which can then be evaluated.
 /// Sentences are separated by newlines or `;` as provided by the regex in the lexer.
-fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
+fn parse_sentence(tokens: &mut SplitWhitespace, functions: &mut HashMap<String, FnExpr>) -> Result<Vec<Node>, String> {
     let mut nodes = Vec::new();
     match tokens.next() {
         Some(t) => match t {
-            "+" | "-" | "*" | "/" | ">" | "<" => {
+            "+" | "-" | "*" | "/" | ">" | "<" | "%" | "==" => {
                 nodes.push(Node::BinaryExpr(BinaryExpr {
                     op: Op::new(t),
-                    lhs: parse_sentence(tokens).unwrap(),
-                    rhs: parse_sentence(tokens).unwrap(),
+                    lhs: parse_sentence(tokens, functions).unwrap(),
+                    rhs: parse_sentence(tokens, functions).unwrap(),
                 }));
             }
 
             "let" => {
                 let name = tokens.next().unwrap();
-                let value = parse_sentence(tokens).unwrap();
+                let value = parse_sentence(tokens, functions).unwrap();
                 nodes.push(Node::BindExpr(BindExpr {
                     name: name.to_string(),
                     value,
@@ -221,13 +266,13 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
 
             "return" => {
                 nodes.push(Node::ReturnExpr(ReturnExpr {
-                    value: parse_sentence(tokens).unwrap(),
+                    value: parse_sentence(tokens, functions).unwrap(),
                 }));
             }
 
             ":=" => {
                 let name = tokens.next().unwrap();
-                let value = parse_sentence(tokens).unwrap();
+                let value = parse_sentence(tokens, functions).unwrap();
                 nodes.push(Node::MutateExpr(MutateExpr {
                     name: name.to_string(),
                     value,
@@ -235,13 +280,13 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
             }
 
             "while" => {
-                let condition = parse_sentence(tokens).unwrap();
+                let condition = parse_sentence(tokens, functions).unwrap();
                 let body = Vec::new();
                 nodes.push(Node::WhileExpr(WhileExpr { condition, body }));
             }
 
             "if" => {
-                let condition = parse_sentence(tokens).unwrap();
+                let condition = parse_sentence(tokens, functions).unwrap();
                 let body = Vec::new();
                 let else_body = Vec::new();
                 nodes.push(Node::IfExpr(IfExpr {
@@ -251,10 +296,39 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
                 }));
             }
 
-            _ => match Number::new(t) {
-                Ok(n) => nodes.push(Node::Number(n)),
-                Err(_) => nodes.push(Node::Variable(t.to_string())),
-            },
+            "fn" => {
+                let name = tokens.next().unwrap();
+                let args = parse_args(tokens.collect::<Vec<_>>().join(" "), functions);
+                let body = Vec::new();
+                let expr = FnExpr {
+                    name: name.to_string(),
+                    args: args,
+                    body,
+                };
+                functions.insert(name.to_string(), expr.clone());
+                nodes.push(Node::FnExpr(expr));
+            }
+
+            "print" => {
+                nodes.push(Node::PrintStdoutExpr(PrintStdoutExpr {
+                    value: parse_sentence(tokens, functions).unwrap(),
+                }));
+            }
+
+            _ => {
+                if let Some(_f) = functions.get(t) {
+                    let args = parse_args(tokens.collect::<Vec<_>>().join(" "), functions);
+                    nodes.push(Node::FnCallExpr(FnCallExpr {
+                        name: t.to_string(),
+                        args,
+                    }));
+                } else {
+                    match Number::new(t) {
+                        Ok(n) => nodes.push(Node::Number(n)),
+                        Err(_) => nodes.push(Node::Variable(t.to_string())),
+                    }
+                }
+            }
         },
 
         None => return Err("No tokens found".to_string()),
@@ -263,9 +337,29 @@ fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
     Ok(nodes)
 }
 
+fn parse_args(tokens: String, functions: &mut HashMap<String, FnExpr>) -> Vec<Node> {
+    let mut nodes = Vec::new();
+    let mut tokens = tokens;
+    if !tokens.starts_with("(") && !tokens.ends_with(")") {
+        panic!("Invalid function arguments. Must be in the form (arg1 arg2 ...)");
+    }
+
+    tokens.remove(0);
+    tokens.pop();
+
+    let mut tokens = tokens.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if let Ok(mut new_nodes) = parse_sentence(&mut token.split_whitespace(), functions) {
+            nodes.append(&mut new_nodes);
+        }
+    }
+
+    nodes
+}
+
 /// Evaluate an AST. This will evaluate an AST and return the result. All variables are in the global scope.
 /// This is essentially the interpreter for the language.
-pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
+pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>, functions: &mut HashMap<String, FnExpr>) -> f64 {
     let mut return_val: Option<f64> = None;
     let mut last_val: f64 = 0.0;
 
@@ -273,8 +367,8 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
         last_val = match node {
             Node::Number(n) => n.0,
             Node::BinaryExpr(e) => {
-                let lhs = eval(&e.lhs, globals);
-                let rhs = eval(&e.rhs, globals);
+                let lhs = eval(&e.lhs, globals, functions);
+                let rhs = eval(&e.rhs, globals, functions);
 
                 match e.op {
                     Op::Add => lhs + rhs,
@@ -283,10 +377,12 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                     Op::Div => lhs / rhs,
                     Op::Gt => (lhs > rhs) as i32 as f64,
                     Op::Lt => (lhs < rhs) as i32 as f64,
+                    Op::Mod => lhs % rhs,
+                    Op::Eqt => (lhs == rhs) as i32 as f64,
                 }
             }
             Node::BindExpr(e) => {
-                let value = eval(&e.value, globals);
+                let value = eval(&e.value, globals, functions);
                 globals.insert(e.name.clone(), value);
                 value
             }
@@ -295,11 +391,11 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                 None => panic!("Variable not found: {v}"),
             },
             Node::ReturnExpr(e) => {
-                return_val = Some(eval(&e.value, globals));
+                return_val = Some(eval(&e.value, globals, functions));
                 0.0 // This doesn't matter, because we'll check return_val at the end
             }
             Node::MutateExpr(e) => {
-                let value = eval(&e.value, globals);
+                let value = eval(&e.value, globals, functions);
                 if let Some(n) = globals.get_mut(&e.name) {
                     *n = value;
                 } else {
@@ -308,17 +404,42 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
                 value
             }
             Node::WhileExpr(e) => {
-                while eval(&e.condition, globals) != 0.0 {
-                    eval(&e.body, globals);
+                while eval(&e.condition, globals, functions) != 0.0 {
+                    eval(&e.body, globals, functions);
                 }
                 0.0
             }
             Node::IfExpr(e) => {
-                if eval(&e.condition, globals) != 0.0 {
-                    eval(&e.body, globals)
+                if eval(&e.condition, globals, functions) != 0.0 {
+                    eval(&e.body, globals, functions)
                 } else {
-                    eval(&e.else_body, globals)
+                    eval(&e.else_body, globals, functions)
                 }
+            }
+            Node::FnExpr(e) => {
+                functions.insert(e.name.clone(), e.clone());
+                0.0
+            }
+            Node::FnCallExpr(e) => {
+                if let Some(f) = functions.get(&e.name).cloned() {
+                    let mut local_scope = HashMap::new();
+                    for (param, arg) in f.args.iter().zip(&e.args) {
+                        let v = eval(&vec![arg.clone()], globals, functions);
+                        let k = match param {
+                            Node::Variable(v) => v,
+                            _ => panic!("Invalid function argument"),
+                        };
+                        local_scope.insert(k.clone(), v);
+                    }
+                    eval(&f.body, &mut local_scope, functions)
+                } else {
+                    panic!("Function not found: {}", e.name);
+                }
+            }
+            Node::PrintStdoutExpr(e) => {
+                let value = eval(&e.value, globals, functions);
+                println!("{}", value);
+                0.0
             }
         };
     }
@@ -339,7 +460,7 @@ pub trait Compile {
     fn from_source(source: &str) -> Self::Output {
         let mut tokens = lex(source);
         // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
-        let nodes = parse(&mut tokens);
+        let nodes = parse(&mut tokens, &mut HashMap::new());
         println!("ast: {:?}", nodes);
         Self::from_ast(nodes)
     }
@@ -358,7 +479,7 @@ impl Compile for Interpreter {
     type Output = f64;
 
     fn from_ast(nodes: Vec<Node>) -> Self::Output {
-        eval(&nodes, &mut HashMap::new())
+        eval(&nodes, &mut HashMap::new(), &mut HashMap::new())
     }
 }
 
@@ -405,7 +526,7 @@ mod tests {
     #[test]
     fn parse_expr() {
         let mut tokens = lex("+ * -2 3 - 2 3.5");
-        let nodes = parse(&mut tokens);
+        let nodes = parse(&mut tokens, &mut HashMap::new());
         assert_eq!(
             nodes,
             vec![Node::BinaryExpr(BinaryExpr {
@@ -427,8 +548,8 @@ mod tests {
     #[test]
     fn eval_expr() {
         let mut tokens = lex("return + * -2 3 - 2 3.5");
-        let nodes = parse(&mut tokens);
-        assert_eq!(eval(&nodes, &mut HashMap::new()), -7.5);
+        let nodes = parse(&mut tokens, &mut HashMap::new());
+        assert_eq!(eval(&nodes, &mut HashMap::new(), &mut HashMap::new()), -7.5);
     }
 
     #[test]
@@ -538,7 +659,52 @@ mod tests {
     }
 
     #[test]
+    fn function_call() {
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
+                fn sum (x y)
+                    return + x y;
+                end
+
+                let i 10;
+                let d 2;
+
+                let z sum (i d);
+
+                return z
+        "#
+        ),
+            12.0
+        );
+    }
+
+    #[test]
+    fn collatz_conjecture() {
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
+                fn collatz (n)
+                    while > n 1
+                        if == % n 2 0
+                            := n / n 2
+                        else
+                            := n + * 3 n 1
+                        end
+                        print n
+                    end
+                    return n
+                end
+
+                return collatz (123)
+        "#
+        ),
+            1.0
+        );
+    }
+
+    #[test]
     fn read_from_file() {
-        assert_eq!(Interpreter::from_file("examples/test.laspa"), 10.0);
+        assert_eq!(Interpreter::from_file("examples/test.laspa"), 1.0);
     }
 }
