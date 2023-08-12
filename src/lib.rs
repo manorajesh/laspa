@@ -83,11 +83,11 @@ lazy_static! {
     static ref RE: Regex = Regex::new(r"[;\n]").unwrap();
 }
 
-pub fn lex<'a>(s: &'a str) -> regex::Split<'static, 'a> {
+pub fn lex(s: &str) -> regex::Split<'static, '_> {
     RE.split(s)
 }
 
-pub fn parse<'a>(tokens: &mut Split<'static, 'a>) -> Vec<Node> {
+pub fn parse(tokens: &mut Split<'static, '_>) -> Vec<Node> {
     let mut nodes = Vec::new();
     while let Some(token) = tokens.next() {
         // println!("token: {}", token);
