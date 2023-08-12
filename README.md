@@ -1,5 +1,6 @@
 # läspa
 ![Build Status](https://github.com/manorajesh/laspa/actions/workflows/rust.yml/badge.svg)
+[![codecov](https://codecov.io/gh/manorajesh/laspa/branch/master/graph/badge.svg?token=2CN1LLRK4P)](https://codecov.io/gh/manorajesh/laspa)
 ![Downloads](https://img.shields.io/crates/d/laspa)
 ![Version](https://img.shields.io/crates/v/laspa)
 ![License](https://img.shields.io/crates/l/laspa)
