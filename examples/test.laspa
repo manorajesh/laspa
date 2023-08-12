@@ -1,0 +1,42 @@
+// Simple addition
++ 1 2
+
+// Multiplication and subtraction
+- * 4 5 3
+
+// Nested operations
++ * 2 3 - 5 / 10 2
+
+// Variable assignments and usage
+let x 5
+let y 10
++ x y
+
+// More complex variable assignments
+let z + x y
+z
+
+// Invalid operations for error handling (if it exists)
+/ 5 0
+
+// Some more calculations
+* * 5 6 7
+- 100 50
+/ 99 3
+
+// Let's have a deep nesting to test performance
++ - * / 5 2 3 4 - * / 8 4 6 2 + - * / 1 1 2 2 3 3 4 4
+
+// Repeating operations for performance
++ 1 1
++ 1 1
++ 1 1
+...
+// Continue with the above line as many times as you want to test performance
+
+// Some more nested operations
+- + 5 5 * 6 7 + / 8 2 3 4
+
+// Using previously defined variables
++ x z
+- y z

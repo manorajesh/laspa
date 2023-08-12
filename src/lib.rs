@@ -1,13 +1,15 @@
-use std::str::SplitWhitespace;
+use std::{str::{SplitWhitespace}, collections::HashMap};
+use regex::{Regex, Split};
+use lazy_static::lazy_static;
 
 #[derive(Debug, PartialEq)]
 pub struct Number(pub f64);
 
 impl Number {
-    pub fn new(s: &str) -> Self {
+    pub fn new(s: &str) -> Result<Self, String> {
         match s.parse::<f64>() {
-            Ok(n) => Self(n),
-            Err(_) => panic!("Invalid number: {s}"),
+            Ok(n) => Ok(Self(n)),
+            Err(_) => Err(format!("Invalid number: {s}")),
         }
     }
 }
@@ -20,6 +22,7 @@ pub enum Op {
     Div,
     Gt, // Greater than
     Lt, // Less than
+    Assign,
 }
 
 impl Op {
@@ -31,79 +34,122 @@ impl Op {
             "/" => Self::Div,
             ">" => Self::Gt,
             "<" => Self::Lt,
+            "let" => Self::Assign,
             _ => panic!("Invalid operator"),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Expr {
+pub struct BinaryExpr {
     pub op: Op,
     pub lhs: Vec<Node>,
     pub rhs: Vec<Node>,
 }
 
 #[derive(Debug, PartialEq)]
+pub struct BindExpr {
+    pub name: String,
+    pub value: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Number(Number),
-    Expr(Expr),
+    BinaryExpr(BinaryExpr),
+    BindExpr(BindExpr),
+    Variable(String),
 }
 
-pub fn lex(s: &str) -> SplitWhitespace {
-    s.split_whitespace()
+lazy_static! {
+    static ref RE: Regex = Regex::new(r"[;\n]").unwrap();
 }
 
-pub fn parse(tokens: &mut SplitWhitespace) -> Vec<Node> {
+pub fn lex<'a>(s: &'a str) -> regex::Split<'static, 'a> {
+    RE.split(s)
+}
+
+
+pub fn parse<'a>(tokens: &mut Split<'static, 'a>) -> Vec<Node> {
+    let mut nodes = Vec::new();
+    for token in tokens {
+        if let Ok(mut new_nodes) = parse_sentence(&mut token.split_whitespace()) {
+            nodes.append(&mut new_nodes);
+        }
+    }
+    nodes
+}
+
+fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
     let mut nodes = Vec::new();
     match tokens.next() {
         Some(t) => {
             match t {
                 "+" | "-" | "*" | "/" | ">" | "<" => {
-                    nodes.push(Node::Expr(Expr {
+                    nodes.push(Node::BinaryExpr(BinaryExpr {
                         op: Op::new(t),
-                        lhs: parse(tokens),
-                        rhs: parse(tokens),
+                        lhs: parse_sentence(tokens).unwrap(),
+                        rhs: parse_sentence(tokens).unwrap(),
                     }));
                 }
+
+                "let" => {
+                    let name = tokens.next().unwrap();
+                    let value = parse_sentence(tokens).unwrap();
+                    nodes.push(Node::BindExpr(BindExpr {
+                        name: name.to_string(),
+                        value,
+                    }));
+                }
+
+                ";" => {}
+
+                "//" => {
+                    while let Some(_) = tokens.next() {}
+                }
+
                 _ => {
-                    nodes.push(Node::Number(Number::new(t)));
+                    match Number::new(t) {
+                        Ok(n) => nodes.push(Node::Number(n)),
+                        Err(_) => nodes.push(Node::Variable(t.to_string())),
+                    }
                 }
             }
         }
 
-        None => panic!("No tokens found"),
+        None => return Err("No tokens found".to_string()),
     }
-    nodes
+
+    Ok(nodes)
 }
 
-pub fn eval(ast: &Vec<Node>) -> f64 {
+pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
     let mut return_val: f64 = 0.0;
+
     for node in ast {
         match node {
-            Node::Number(n) => return_val += n.0,
-            Node::Expr(e) => {
-                let lhs = eval(&e.lhs);
-                let rhs = eval(&e.rhs);
+            Node::Number(n) => return n.0,
+            Node::BinaryExpr(e) => {
+                let lhs = eval(&e.lhs, globals);
+                let rhs = eval(&e.rhs, globals);
 
-                return_val = match e.op {
+                return_val += match e.op {
                     Op::Add => lhs + rhs,
                     Op::Sub => lhs - rhs,
                     Op::Mul => lhs * rhs,
                     Op::Div => lhs / rhs,
-                    Op::Gt => {
-                        if lhs > rhs {
-                            1.0
-                        } else {
-                            0.0
-                        }
-                    }
-                    Op::Lt => {
-                        if lhs < rhs {
-                            1.0
-                        } else {
-                            0.0
-                        }
-                    }
+                    _ => 0.0,
+                }
+            }
+            Node::BindExpr(e) => {
+                let value = eval(&e.value, globals);
+                globals.insert(e.name.clone(), value);
+            }
+            Node::Variable(v) => {
+                // println!("globals: {:?}", globals);
+                return match globals.get(v) {
+                    Some(n) => *n,
+                    None => panic!("Variable not found: {v}"),
                 }
             }
         }
@@ -118,8 +164,15 @@ pub trait Compile {
 
     fn from_source(source: &str) -> Self::Output {
         let mut tokens = lex(source);
+        // println!("tokens: {:?}", tokens);
         let nodes = parse(&mut tokens);
+        println!("ast: {:?}", nodes);
         Self::from_ast(nodes)
+    }
+
+    fn from_file(path: &str) -> Self::Output {
+        let source = std::fs::read_to_string(path).unwrap();
+        Self::from_source(&source)
     }
 }
 
@@ -129,7 +182,7 @@ impl Compile for Interpreter {
     type Output = f64;
 
     fn from_ast(nodes: Vec<Node>) -> Self::Output {
-        eval(&nodes)
+        eval(&nodes, &mut HashMap::new())
     }
 }
 
@@ -139,8 +192,8 @@ mod tests {
 
     #[test]
     fn parse_number() {
-        assert_eq!(Number::new("1.0"), Number(1.0));
-        assert_eq!(Number::new("4"), Number(4.0));
+        assert_eq!(Number::new("1.0").unwrap(), Number(1.0));
+        assert_eq!(Number::new("4").unwrap(), Number(4.0));
     }
 
     #[test]
@@ -180,14 +233,14 @@ mod tests {
         assert_eq!(
             nodes,
             vec![
-                Node::Expr(Expr {
+                Node::BinaryExpr(BinaryExpr {
                     op: Op::Add,
-                    lhs: vec![Node::Expr(Expr {
+                    lhs: vec![Node::BinaryExpr(BinaryExpr {
                         op: Op::Mul,
                         lhs: vec![Node::Number(Number(-2.0))],
                         rhs: vec![Node::Number(Number(3.0))],
                     })],
-                    rhs: vec![Node::Expr(Expr {
+                    rhs: vec![Node::BinaryExpr(BinaryExpr {
                         op: Op::Sub,
                         lhs: vec![Node::Number(Number(2.0))],
                         rhs: vec![Node::Number(Number(3.5))],
@@ -201,11 +254,38 @@ mod tests {
     fn eval_expr() {
         let mut tokens = lex("+ * -2 3 - 2 3.5");
         let nodes = parse(&mut tokens);
-        assert_eq!(eval(&nodes), -7.5);
+        assert_eq!(eval(&nodes, &mut HashMap::new()), -7.5);
     }
 
     #[test]
     fn interpret() {
         assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5"), -7.5);
+    }
+
+    #[test]
+    fn define_variable() {
+        assert_eq!(Interpreter::from_source(r#"
+            let x 1
+        "#), 0.0);
+    }
+
+    #[test]
+    fn variable_arithmetic() {
+        assert_eq!(Interpreter::from_source("let x 2;
+        let y 1;
+        + x y;"), 3.0);
+    }
+
+    #[test]
+    fn variable_arithmetic_complex() {
+        assert_eq!(Interpreter::from_source("let x 2;
+        let y 1;
+        let z + x * y 2;
+        z;"), 4.0);
+    }
+
+    #[test]
+    fn read_from_file() {
+        assert_eq!(Interpreter::from_file("examples/test.laspa"), 10.0);
     }
 }
