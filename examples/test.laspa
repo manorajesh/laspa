@@ -1,6 +1,6 @@
 let x + 2 - 10 2
 
 let y + x 2
-let z y
+let z y;let u + 10 z
 
-return x
+return u

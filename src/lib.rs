@@ -305,6 +305,6 @@ mod tests {
 
     #[test]
     fn read_from_file() {
-        assert_eq!(Interpreter::from_file("examples/test.laspa"), 10.0);
+        assert_eq!(Interpreter::from_file("examples/test.laspa"), 22.0);
     }
 }
