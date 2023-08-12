@@ -1,6 +1,6 @@
-use std::{str::SplitWhitespace, collections::HashMap};
-use regex::{Regex, Split};
 use lazy_static::lazy_static;
+use regex::{Regex, Split};
+use std::{collections::HashMap, str::SplitWhitespace};
 
 #[derive(Debug, PartialEq)]
 pub struct Number(pub f64);
@@ -112,61 +112,54 @@ pub fn parse<'a>(tokens: &mut Split<'static, 'a>) -> Vec<Node> {
 fn parse_sentence(tokens: &mut SplitWhitespace) -> Result<Vec<Node>, String> {
     let mut nodes = Vec::new();
     match tokens.next() {
-        Some(t) => {
-            match t {
-                "+" | "-" | "*" | "/" | ">" | "<" => {
-                    nodes.push(Node::BinaryExpr(BinaryExpr {
-                        op: Op::new(t),
-                        lhs: parse_sentence(tokens).unwrap(),
-                        rhs: parse_sentence(tokens).unwrap(),
-                    }));
-                }
-
-                "let" => {
-                    let name = tokens.next().unwrap();
-                    let value = parse_sentence(tokens).unwrap();
-                    nodes.push(Node::BindExpr(BindExpr {
-                        name: name.to_string(),
-                        value,
-                    }));
-                }
-
-                "//" => {
-                    return Ok(nodes);
-                }
-
-                "return" => {
-                    nodes.push(Node::ReturnExpr(ReturnExpr {
-                        value: parse_sentence(tokens).unwrap(),
-                    }));
-                }
-
-                ":=" => {
-                    let name = tokens.next().unwrap();
-                    let value = parse_sentence(tokens).unwrap();
-                    nodes.push(Node::MutateExpr(MutateExpr {
-                        name: name.to_string(),
-                        value,
-                    }));
-                }
-
-                "while" => {
-                    let condition = parse_sentence(tokens).unwrap();
-                    let body = Vec::new();
-                    nodes.push(Node::WhileExpr(WhileExpr {
-                        condition,
-                        body,
-                    }));
-                }
-
-                _ => {
-                    match Number::new(t) {
-                        Ok(n) => nodes.push(Node::Number(n)),
-                        Err(_) => nodes.push(Node::Variable(t.to_string())),
-                    }
-                }
+        Some(t) => match t {
+            "+" | "-" | "*" | "/" | ">" | "<" => {
+                nodes.push(Node::BinaryExpr(BinaryExpr {
+                    op: Op::new(t),
+                    lhs: parse_sentence(tokens).unwrap(),
+                    rhs: parse_sentence(tokens).unwrap(),
+                }));
             }
-        }
+
+            "let" => {
+                let name = tokens.next().unwrap();
+                let value = parse_sentence(tokens).unwrap();
+                nodes.push(Node::BindExpr(BindExpr {
+                    name: name.to_string(),
+                    value,
+                }));
+            }
+
+            "//" => {
+                return Ok(nodes);
+            }
+
+            "return" => {
+                nodes.push(Node::ReturnExpr(ReturnExpr {
+                    value: parse_sentence(tokens).unwrap(),
+                }));
+            }
+
+            ":=" => {
+                let name = tokens.next().unwrap();
+                let value = parse_sentence(tokens).unwrap();
+                nodes.push(Node::MutateExpr(MutateExpr {
+                    name: name.to_string(),
+                    value,
+                }));
+            }
+
+            "while" => {
+                let condition = parse_sentence(tokens).unwrap();
+                let body = Vec::new();
+                nodes.push(Node::WhileExpr(WhileExpr { condition, body }));
+            }
+
+            _ => match Number::new(t) {
+                Ok(n) => nodes.push(Node::Number(n)),
+                Err(_) => nodes.push(Node::Variable(t.to_string())),
+            },
+        },
 
         None => return Err("No tokens found".to_string()),
     }
@@ -205,7 +198,7 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
             },
             Node::ReturnExpr(e) => {
                 return_val = Some(eval(&e.value, globals));
-                0.0  // This doesn't matter, because we'll check return_val at the end
+                0.0 // This doesn't matter, because we'll check return_val at the end
             }
             Node::MutateExpr(e) => {
                 let value = eval(&e.value, globals);
@@ -227,7 +220,6 @@ pub fn eval(ast: &Vec<Node>, globals: &mut HashMap<String, f64>) -> f64 {
 
     return_val.unwrap_or(last_val)
 }
-
 
 pub trait Compile {
     type Output;
@@ -304,21 +296,19 @@ mod tests {
         let nodes = parse(&mut tokens);
         assert_eq!(
             nodes,
-            vec![
-                Node::BinaryExpr(BinaryExpr {
-                    op: Op::Add,
-                    lhs: vec![Node::BinaryExpr(BinaryExpr {
-                        op: Op::Mul,
-                        lhs: vec![Node::Number(Number(-2.0))],
-                        rhs: vec![Node::Number(Number(3.0))],
-                    })],
-                    rhs: vec![Node::BinaryExpr(BinaryExpr {
-                        op: Op::Sub,
-                        lhs: vec![Node::Number(Number(2.0))],
-                        rhs: vec![Node::Number(Number(3.5))],
-                    })],
-                }),
-            ]
+            vec![Node::BinaryExpr(BinaryExpr {
+                op: Op::Add,
+                lhs: vec![Node::BinaryExpr(BinaryExpr {
+                    op: Op::Mul,
+                    lhs: vec![Node::Number(Number(-2.0))],
+                    rhs: vec![Node::Number(Number(3.0))],
+                })],
+                rhs: vec![Node::BinaryExpr(BinaryExpr {
+                    op: Op::Sub,
+                    lhs: vec![Node::Number(Number(2.0))],
+                    rhs: vec![Node::Number(Number(3.5))],
+                })],
+            }),]
         )
     }
 
@@ -336,24 +326,39 @@ mod tests {
 
     #[test]
     fn define_variable() {
-        assert_eq!(Interpreter::from_source(r#"
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
             let x 1
-        "#), 1.0);
+        "#
+            ),
+            1.0
+        );
     }
 
     #[test]
     fn variable_arithmetic() {
-        assert_eq!(Interpreter::from_source("let x 2;
+        assert_eq!(
+            Interpreter::from_source(
+                "let x 2;
         let y 1;
-        + x y;"), 3.0);
+        + x y;"
+            ),
+            3.0
+        );
     }
 
     #[test]
     fn variable_arithmetic_complex() {
-        assert_eq!(Interpreter::from_source("let x 2;
+        assert_eq!(
+            Interpreter::from_source(
+                "let x 2;
         let y 1;
         let z + x * y 2;
-        z;"), 4.0);
+        z;"
+            ),
+            4.0
+        );
     }
 
     #[test]
@@ -363,7 +368,9 @@ mod tests {
 
     #[test]
     fn while_loop() {
-        assert_eq!(Interpreter::from_source(r#"
+        assert_eq!(
+            Interpreter::from_source(
+                r#"
         let x 0;
         // let y 0;
         
@@ -376,7 +383,10 @@ mod tests {
         end
         
         return + x i;
-        "#), 1100.0);
+        "#
+            ),
+            1100.0
+        );
     }
 
     #[test]
