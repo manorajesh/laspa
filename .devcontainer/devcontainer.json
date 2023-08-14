@@ -1,8 +1,6 @@
 {
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/devcontainers-contrib/features/apt-packages:1": {
-      "packages": "build-essential,llvm-16,libpolly-16-dev,zlib1g-dev"
-    }
+    "ghcr.io/devcontainers/features/rust:1": {}
   }
 }
