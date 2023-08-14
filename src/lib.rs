@@ -56,6 +56,8 @@ assert_eq!(result, 3.0);
 ```
  */
 
+mod llvm;
+
 use lazy_static::lazy_static;
 use regex::{Regex, Split};
 use std::{collections::HashMap, str::SplitWhitespace};
