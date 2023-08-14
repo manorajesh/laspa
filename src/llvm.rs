@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use inkwell::{self, context::Context, module::Module};
 
-pub struct LLVMCompiler {
+pub struct LLVMCompiler<'a> {
     pub context: Context,
-    pub module: Module,
+    pub module: Module<'a>,
     pub variables: HashMap<String, f64>,
 }
