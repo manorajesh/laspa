@@ -6,25 +6,36 @@ pub struct LLVMCompiler<'a, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'a Builder<'ctx>,
     pub module: &'a Module<'ctx>,
-    pub fpm: &'a PassManager<FunctionValue<'ctx>>
+    pub fpm: &'a PassManager<FunctionValue<'ctx>>,
+    pub jit: bool,
 }
 
 impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
-    pub fn codegen (
+    pub fn new(
         context: &'ctx Context,
         builder: &'a Builder<'ctx>,
         module: &'a Module<'ctx>,
         fpm: &'a PassManager<FunctionValue<'ctx>>,
-        nodes: Vec<Node>
-    ) -> Result<FunctionValue<'ctx>, &'static str> {
-        let mut compiler = Self {
+    ) -> Self {
+        Self {
             context,
             builder,
             module,
             fpm,
-        };
+            jit: false,
+        }
+    }
 
-        compiler.gen_main(nodes)
+    pub fn codegen(&mut self, nodes: Vec<Node>) -> Result<FunctionValue<'ctx>, &'static str> {
+        self.gen_main(nodes)
+    }
+
+    pub fn use_jit(&mut self) {
+        self.jit = true;
+    }
+
+    pub fn use_aot(&mut self) {
+        self.jit = false;
     }
 
     pub fn gen_main(&mut self, nodes: Vec<Node>) -> Result<FunctionValue<'ctx>, &'static str> {
@@ -109,18 +120,20 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
     // }
 }
 
-impl Compile for LLVMCompiler<'_, '_> {
+impl Codegen for LLVMCompiler<'_, '_> {
     type Output = Result<f64, &'static str>;
 
-    fn from_ast(nodes: Vec<Node>, jit: bool) -> Self::Output {
+    fn from_ast(nodes: Vec<Node>) -> Self::Output {
         let context = Context::create();
         let builder = context.create_builder();
         let module = context.create_module("main");
         let fpm = PassManager::create(&module);
 
-        LLVMCompiler::codegen(&context, &builder, &module, &fpm, nodes).expect("Failed to generate IR");
+        let compiler = compiler.unwrap_or(LLVMCompiler::new(&context, &builder, &module, &fpm));
 
-        if jit {
+        compiler.codegen().expect("Failed to generate IR");
+
+        if self.jit {
             Target::initialize_native(&InitializationConfig::default()).expect("Failed to initialize native target");
 
             let execution_engine = module.create_jit_execution_engine(inkwell::OptimizationLevel::Default).expect("Failed to create JIT execution engine");
@@ -132,4 +145,12 @@ impl Compile for LLVMCompiler<'_, '_> {
 
         Ok(0.0)
     }
+}
+
+pub trait Codegen: Compile {
+    fn codegen(&mut self) -> Result<(), &'static str>;
+
+    fn use_aot(&mut self);
+
+    fn use_jit(&mut self);
 }

@@ -456,21 +456,21 @@ assert_eq!(result, 3.0);
      type Output;
  
      /// Compile an AST into the output type.
-     fn from_ast(nodes: Vec<Node>, jit: bool) -> Self::Output;
+     fn from_ast(nodes: Vec<Node>) -> Self::Output;
  
      /// Compile a string into the output type.
-     fn from_source(source: &str, jit: bool) -> Self::Output {
+     fn from_source(source: &str) -> Self::Output {
          let mut tokens = lex(source);
          // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
          let nodes = parse(&mut tokens, &mut HashMap::new());
          println!("ast: {:?}", nodes);
-         Self::from_ast(nodes, jit)
+         Self::from_ast(nodes)
      }
  
      /// Compile a file into the output type. Supply the crate-relative path to the file.
-     fn from_file(path: &str, jit: bool) -> Self::Output {
+     fn from_file(path: &str) -> Self::Output {
          let source = std::fs::read_to_string(path).unwrap();
-         Self::from_source(&source, jit)
+         Self::from_source(&source)
      }
  }
  
@@ -481,7 +481,7 @@ assert_eq!(result, 3.0);
      type Output = f64;
  
      // jit is ignored for the interpreter
-     fn from_ast(nodes: Vec<Node>, _jit: bool) -> Self::Output {
+     fn from_ast(nodes: Vec<Node>) -> Self::Output {
          eval(&nodes, &mut HashMap::new(), &mut HashMap::new())
      }
  }
@@ -557,7 +557,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn interpret() {
-         assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5", false), -7.5);
+         assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5"), -7.5);
      }
  
      #[test]
@@ -566,8 +566,7 @@ assert_eq!(result, 3.0);
              Interpreter::from_source(
                  r#"
              let x 1
-         "#,
-             false),
+         "#),
              1.0
          );
      }
@@ -578,7 +577,7 @@ assert_eq!(result, 3.0);
              Interpreter::from_source(
                  "let x 2;
          let y 1;
-         + x y;", false
+         + x y;"
              ),
              3.0
          );
@@ -591,7 +590,7 @@ assert_eq!(result, 3.0);
                  "let x 2;
          let y 1;
          let z + x * y 2;
-         z;", false
+         z;"
              ),
              4.0
          );
@@ -599,7 +598,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn return_only() {
-         assert_eq!(Interpreter::from_source("+ 2 3;return 1;", false), 1.0);
+         assert_eq!(Interpreter::from_source("+ 2 3;return 1;"), 1.0);
      }
  
      #[test]
@@ -619,7 +618,7 @@ assert_eq!(result, 3.0);
          end
          
          return + x i;
-         "#, false
+         "#
              ),
              1100.0
          );
@@ -636,7 +635,7 @@ assert_eq!(result, 3.0);
          else
              return 2;
          end
-         "#, false
+         "#
              ),
              1.0
          );
@@ -655,7 +654,7 @@ assert_eq!(result, 3.0);
                  end
                  
                  return x
-         "#, false
+         "#
              ),
              10.0
          );
@@ -676,7 +675,7 @@ assert_eq!(result, 3.0);
                  let z sum (i d);
  
                  return z
-         "#, false
+         "#
          ),
              12.0
          );
@@ -700,7 +699,7 @@ assert_eq!(result, 3.0);
                  end
  
                  return collatz (123)
-         "#, false
+         "#
          ),
              1.0
          );
@@ -708,12 +707,12 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn read_from_file() {
-         assert_eq!(Interpreter::from_file("examples/test.laspa", false), 1.0);
+         assert_eq!(Interpreter::from_file("examples/test.laspa"), 1.0);
      }
  
      #[test]
      fn llvm_compiler() {
-         assert_eq!(llvm::LLVMCompiler::from_source("+ 1 2", true).unwrap(), 3.0);
+         assert_eq!(llvm::LLVMCompiler::from_source("+ 1 2").unwrap(), 3.0);
      }
  }
  
