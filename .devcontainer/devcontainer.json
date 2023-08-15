@@ -3,5 +3,5 @@
   "features": {
     "ghcr.io/devcontainers/features/rust:1": {}
   },
-  "postCreateCommand": "apt update && apt install -y llvm-16 libpolly-16-dev zlib1g-dev"
+  "postCreateCommand": "apt update -y && apt full-upgrade -y && wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 16 && apt install libpolly-16-dev zlib1g-dev"
 }
