@@ -2,45 +2,51 @@ use std::collections::HashMap;
 
 use inkwell::{self, context::Context, module::Module};
 
-use crate::Compile;
+use crate::{Compile, Node};
 
-pub struct LLVMCompiler<'a> {
-    pub context: Context,
-    pub module: Module<'a>,
-    pub variables: HashMap<String, f64>,
+pub struct LLVMCompiler<'a, 'ctx> {
+    pub context: &'ctx Context,
+    pub builder: &'a Builder<'ctx>,
+    pub module: &'a Module<'ctx>,
+    pub fpm: &'a PassManager<FunctionValue<'ctx>>
 }
 
-impl<'a> LLVMCompiler<'a> {
-    // Constructor to easily create a new compiler instance
-    pub fn new() -> Self {
-        let context = Context::create();
-        let module = context.create_module("my_module");
-        let variables = HashMap::new();
+impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
-        LLVMCompiler {
+    pub fn new (
+        context: &'ctx Context,
+        builder: &'a Builder<'ctx>,
+        module: &'a Module<'ctx>,
+        fpm: &'a PassManager<FunctionValue<'ctx>>,
+        nodes: Vec<Node>
+    ) -> Result<FunctionValue<'ctx>, &'static str> {
+        let mut compiler = Self {
             context,
+            builder,
             module,
-            variables,
-        }
+            fpm,
+        };
+
+        compiler.gen_ir(nodes)
     }
 
-    pub fn generate_ir(&mut self, nodes: Vec<Node>) -> Result<(), ()> {
+    pub fn gen_ir(&mut self, nodes: Vec<Node>) -> Result<(), ()> {
         todo!("Generate LLVM IR code from AST nodes");
-        Ok(())
+        // Ok(())
     }
 
     // Template function for compiling expressions (e.g. binary ops, literals, variables)
-    pub fn compile_expr(&mut self, expr: &Expr) {
+    pub fn compile_expr(&mut self, _expr: &Node) {
         // TODO: Based on the type of expr, generate the appropriate IR
     }
 }
 
-impl Compile for LLVMCompiler<'_> {
+impl Compile for LLVMCompiler<'_, '_> {
     type Output = Result<(), ()>;
 
     fn from_ast(nodes: Vec<Node>) -> Self::Output {
         let mut compiler = LLVMCompiler::new();
 
-        compiler.generate_ir(nodes)
+        compiler.new(nodes)
     }
 }
