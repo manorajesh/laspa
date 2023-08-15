@@ -2,5 +2,6 @@
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/rust:1": {}
-  }
+  },
+  "postCreateCommand": "apt update && apt install -y llvm-16 libpolly-16-dev zlib1g-dev"
 }
