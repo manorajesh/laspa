@@ -767,20 +767,20 @@ impl CompileConfig {
      fn llvm_jit_while() {
         let config = CompileConfig::from(true, true);
          assert_eq!(llvm::LLVMCompiler::from_source(
-                 r#"
-         let x 0;
-         // let y 0;
-         
-         while < x 1000
-             let i 0;
-             while < i 100
-                 := x + x 1;
-                 := i + i 1;
-             end
-         end
-         
-         return + x i;
-         "#, &config
+            r#"
+            let x 0;
+            // let y 0;
+            
+            while < x 1000
+                let i 0;
+                while < i 100
+                    := x + x 1;
+                    := i + i 1;
+                end
+            end
+            
+            return + x i;
+            "#, &config
              ).unwrap(), 1100.0);
      }
  }

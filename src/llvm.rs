@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue}, targets::{Target, InitializationConfig}};
 
@@ -135,8 +135,15 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                         Op::Mod => {
                             return Ok(LLVMValue::Float(self.builder.build_float_rem(lhs, rhs, "modtmp")));
                         }
-
-                        _ => panic!("Unknown binary operator")
+                        Op::Gt => {
+                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OGT, lhs, rhs, "gttmp")));
+                        }
+                        Op::Lt => {
+                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OLT, lhs, rhs, "lttmp")));
+                        }
+                        Op::Eqt => {
+                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, lhs, rhs, "eqttmp")));
+                        }
                     }
                 }
                 Node::BindExpr(e) => {
@@ -172,25 +179,29 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 }
                 Node::WhileExpr(e) => {
                     let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-
+                
                     let loop_cond_bb = self.context.append_basic_block(function, "loop_cond");
                     let loop_body_bb = self.context.append_basic_block(function, "loop_body");
                     let loop_end_bb = self.context.append_basic_block(function, "loop_end");
-
+                
+                    // Start from the current position (should be the end of the entry block or the previous block)
+                    self.builder.build_unconditional_branch(loop_cond_bb);
+                
+                    // Now, handle the loop condition
                     self.builder.position_at_end(loop_cond_bb);
-
                     let cond = self.gen_body(&e.condition)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
                     self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
-
+                
+                    // Generate the loop body
                     self.builder.position_at_end(loop_body_bb);
                     for node in e.body.iter() {
                         self.gen_expr(node)?;
                     }
-                    
                     self.builder.build_unconditional_branch(loop_cond_bb);
-
+                
+                    // Position builder at the end block after the loop
                     self.builder.position_at_end(loop_end_bb);
-                }
+                }                
                 Node::IfExpr(_e) => {
                     todo!("Return expression")
                 }
@@ -236,6 +247,9 @@ impl Compile for LLVMCompiler<'_, '_> {
             let result = unsafe { main_func.call() };
             return Ok(result);
         }
+
+        let path = Path::new("output.ll");
+        module.print_to_file(&path).expect("Error writing file");
 
         Ok(0.0)
     }
