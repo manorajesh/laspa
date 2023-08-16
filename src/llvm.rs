@@ -6,7 +6,7 @@ use crate::{Compile, Node, Op, CompileConfig};
 
 pub enum LLVMValue<'ctx> {
     Float(FloatValue<'ctx>),
-    Int(IntValue<'ctx>)
+    Int(IntValue<'ctx>),
 }
 
 impl<'ctx> From<IntValue<'ctx>> for LLVMValue<'ctx> {
@@ -60,7 +60,7 @@ pub struct LLVMCompiler<'a, 'ctx> {
     pub builder: &'a Builder<'ctx>,
     pub module: &'a Module<'ctx>,
     pub fpm: &'a PassManager<FunctionValue<'ctx>>,
-    pub variables: HashMap<String, inkwell::values::PointerValue<'ctx>>,
+    pub variables: Vec<HashMap<String, inkwell::values::PointerValue<'ctx>>>,
 }
 
 impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
@@ -70,7 +70,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
         module: &'a Module<'ctx>,
         fpm: &'a PassManager<FunctionValue<'ctx>>,
     ) -> Self {
-        let variables= HashMap::new();
+        let variables= vec![HashMap::new()];
         Self {
             context,
             builder,
@@ -153,17 +153,24 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     let alloca = self.builder.build_alloca(f64_type, &e.name.as_str());
                     self.builder.build_store(alloca, value);
                 
-                    self.variables.insert(e.name.to_string(), alloca);
+                    self.variables
+                        .last_mut()
+                        .expect("No variable scopes found")
+                        .insert(e.name.to_string(), alloca);
                 }
                 Node::Variable(name) => {
                     let f64_type = self.context.f64_type();
-                    let alloca = self.variables.get(name)
-                        .expect("Variable not found!");
-
+                    let alloca = self.variables
+                        .last()
+                        .expect("No variable scopes found")
+                        .get(name)
+                        .expect(format!("Variable '{}' not found!", name).as_str());
+                
                     let loaded_value = self.builder.build_load(f64_type, *alloca, &name);
                 
                     return Ok(LLVMValue::Float(loaded_value.into_float_value()));
-                }  
+                }
+                 
                 Node::ReturnExpr(e) => {
                     let value = self.gen_body(&e.value)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
 
@@ -172,8 +179,11 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 }
                 Node::MutateExpr(e) => {
                     let value = self.gen_body(&e.value)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
-                    let alloca = self.variables.get(&e.name)
-                        .expect("Variable not found!");
+                    let alloca = self.variables
+                                    .last()             
+                                    .expect("No variable scopes found")
+                                    .get(&e.name)
+                    .expect(format!("Variable '{}' not found to mutate!", e.name).as_str());
 
                     self.builder.build_store(*alloca, value);
                 }
@@ -202,15 +212,101 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     // Position builder at the end block after the loop
                     self.builder.position_at_end(loop_end_bb);
                 }                
-                Node::IfExpr(_e) => {
-                    todo!("Return expression")
+                Node::IfExpr(e) => {
+                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                
+                    let if_cond_bb = self.context.append_basic_block(function, "if_cond");
+                    let then_bb = self.context.append_basic_block(function, "then_block");
+                    let else_bb = if !e.else_body.is_empty() {
+                        Some(self.context.append_basic_block(function, "else_block"))
+                    } else {
+                        None
+                    };
+
+                    let end_if_bb = self.context.append_basic_block(function, "end_if");
+
+                    // Start from the current position (should be the end of the entry block or the previous block)
+                    self.builder.build_unconditional_branch(if_cond_bb);
+                
+                    // Evaluate the condition
+                    self.builder.position_at_end(if_cond_bb);
+                    let cond = self.gen_body(&e.condition)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
+                    
+                    match else_bb {
+                        Some(else_block) => {
+                            self.builder.build_conditional_branch(cond, then_bb, else_block);
+                        },
+                        None => {
+                            self.builder.build_conditional_branch(cond, then_bb, end_if_bb);
+                        }
+                    }
+                
+                    // Generate then block
+                    self.builder.position_at_end(then_bb);
+                    for node in e.body.iter() {
+                        self.gen_expr(node)?;
+                    }
+                    self.builder.build_unconditional_branch(end_if_bb);
+                
+                    // Generate else block if it exists
+                    if else_bb.is_some() {
+                        self.builder.position_at_end(else_bb.unwrap());
+                        for node in e.else_body.iter() {
+                            self.gen_expr(node)?;
+                        }
+                    }
+                
+                    // Position builder at the end block after the if statement
+                    self.builder.position_at_end(end_if_bb);
                 }
-                Node::FnExpr(_e) => {
-                    todo!("Return expression")
+                Node::FnExpr(e) => {
+                    // Save the current block so we can restore it later.
+                    let current_block = self.builder.get_insert_block().unwrap();
+
+                    // Create a new local variable scope for this function.
+                    self.variables.push(HashMap::new());
+                
+                    let f64_type = self.context.f64_type();
+                    let param_types = vec![f64_type.into(); e.args.len()];
+                    let fn_type = f64_type.fn_type(&param_types, false);
+                    let function = self.module.add_function(&e.name, fn_type, None);
+                    let entry = self.context.append_basic_block(function, "entry");
+                    self.builder.position_at_end(entry);
+                
+                    // Load arguments and insert them into the local variable scope.
+                    for (i, arg) in e.args.iter().enumerate() {
+                        let param_value = function.get_nth_param(i as u32).unwrap();
+                    
+                        let name = if let Node::Variable(v) = arg {
+                            v
+                        } else {
+                            panic!("Expected variable name")
+                        };
+                    
+                        self.variables
+                            .last_mut()
+                            .expect("No variable scopes found")
+                            .insert(name.to_string(), param_value);
+                    }
+                    
+                
+                    // Process the function body.
+                    let ret = self.gen_body(&e.body)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+                    println!("ret: {:?}", ret);
+                
+                    // End of function; pop off its local variable scope.
+                    self.variables.pop().unwrap();
+
+                    self.builder.position_at_end(current_block);
+
+                    return Ok(LLVMValue::Float(ret));
                 }
-                Node::FnCallExpr(_e) => {
-                    todo!("Return expression")
-                }
+                Node::FnCallExpr(e) => {
+                    let function = self.module.get_function(&e.name).expect("Function not defined");
+                    let arguments: Vec<_> = e.args.iter().map(|arg| self.gen_expr(arg).unwrap().as_float().unwrap().into()).collect();
+                    let call = self.builder.build_call(function, &arguments, "calltmp");
+                    return Ok(LLVMValue::Float(call.try_as_basic_value().left().unwrap().into_float_value()));
+                }  
                 Node::PrintStdoutExpr(_e) => {
                     todo!("Return expression")
                 }

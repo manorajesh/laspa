@@ -783,5 +783,65 @@ impl CompileConfig {
             "#, &config
              ).unwrap(), 1100.0);
      }
+
+     #[test]
+     fn llvm_jit_if_else() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(
+            llvm::LLVMCompiler::from_source(
+                 r#"
+         let x 0;
+         if < x 1
+             return 1;
+         else
+             return 2;
+         end
+         "#, &config
+             ).unwrap(),
+             1.0
+         );
+     }
+ 
+     #[test]
+     fn llvm_jit_only_if() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(
+            llvm::LLVMCompiler::from_source(
+                 r#"
+                 let x 10;
+                 let y 2
+                 
+                 if < x y
+                     return y
+                 end
+                 
+                 return x
+         "#, &config
+             ).unwrap(),
+             10.0
+         );
+     }
+
+     #[test]
+     fn llvm_jit_function_call() {
+        let config = CompileConfig::from(false, true);
+         assert_eq!(
+            llvm::LLVMCompiler::from_source(
+                 r#"
+                 fn sum (x y)
+                     return + x y;
+                 end
+ 
+                 let i 10;
+                 let d 2;
+ 
+                 let z sum (i d);
+ 
+                 return z
+         "#, &config
+         ).unwrap(),
+             12.0
+         );
+     }
  }
  
