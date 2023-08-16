@@ -49,9 +49,9 @@ Source files are just text files with the `.laspa` extension. You can use any ex
 but `.laspa` is the default. You can use the [`Interpreter::from_file`] method to read from a file.
 
 ```rust
-use laspa::{Interpreter, Compile};
+use laspa::{Interpreter, Compile, CompileConfig};
 
-let result = Interpreter::from_source("return + 1 2;", false);
+let result = Interpreter::from_source("return + 1 2;", &CompileConfig::from(false, false));
 assert_eq!(result, 3.0);
 ```
  */
@@ -448,6 +448,18 @@ assert_eq!(result, 3.0);
  
      return_val.unwrap_or(last_val)
  }
+
+pub struct CompileConfig {
+    pub use_jit: bool,
+    pub show_ir: bool,
+}
+
+impl CompileConfig {
+    pub fn from(use_jit: bool, show_ir: bool) -> Self {
+        Self { use_jit, show_ir }
+    }
+}
+
  
  /// The default trait for compiling a language. This is used to compile a language from a specific source.
  /// This trait can be implemented for any output: llvm, interpreter, etc.
@@ -456,21 +468,21 @@ assert_eq!(result, 3.0);
      type Output;
  
      /// Compile an AST into the output type.
-     fn from_ast(nodes: Vec<Node>) -> Self::Output;
+     fn from_ast(nodes: Vec<Node>, config: &CompileConfig) -> Self::Output;
  
      /// Compile a string into the output type.
-     fn from_source(source: &str) -> Self::Output {
+     fn from_source(source: &str, config: &CompileConfig) -> Self::Output {
          let mut tokens = lex(source);
          // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
          let nodes = parse(&mut tokens, &mut HashMap::new());
          println!("ast: {:?}", nodes);
-         Self::from_ast(nodes)
+         Self::from_ast(nodes, config)
      }
  
      /// Compile a file into the output type. Supply the crate-relative path to the file.
-     fn from_file(path: &str) -> Self::Output {
+     fn from_file(path: &str, config: &CompileConfig) -> Self::Output {
          let source = std::fs::read_to_string(path).unwrap();
-         Self::from_source(&source)
+         Self::from_source(&source, config)
      }
  }
  
@@ -481,7 +493,7 @@ assert_eq!(result, 3.0);
      type Output = f64;
  
      // jit is ignored for the interpreter
-     fn from_ast(nodes: Vec<Node>) -> Self::Output {
+     fn from_ast(nodes: Vec<Node>, _config: &CompileConfig) -> Self::Output {
          eval(&nodes, &mut HashMap::new(), &mut HashMap::new())
      }
  }
@@ -557,27 +569,30 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn interpret() {
-         assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5"), -7.5);
+        let config = CompileConfig::from(true, false);
+         assert_eq!(Interpreter::from_source("+ * -2 3 - 2 3.5", &config), -7.5);
      }
  
      #[test]
      fn define_variable() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
              let x 1
-         "#),
+         "#, &config),
              1.0
          );
      }
  
      #[test]
      fn variable_arithmetic() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  "let x 2;
          let y 1;
-         + x y;"
+         + x y;", &config
              ),
              3.0
          );
@@ -585,12 +600,13 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn variable_arithmetic_complex() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  "let x 2;
          let y 1;
          let z + x * y 2;
-         z;"
+         z;", &config
              ),
              4.0
          );
@@ -598,11 +614,13 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn return_only() {
-         assert_eq!(Interpreter::from_source("+ 2 3;return 1;"), 1.0);
+        let config = CompileConfig::from(true, false);
+         assert_eq!(Interpreter::from_source("+ 2 3;return 1;", &config), 1.0);
      }
  
      #[test]
      fn while_loop() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
@@ -618,7 +636,7 @@ assert_eq!(result, 3.0);
          end
          
          return + x i;
-         "#
+         "#, &config
              ),
              1100.0
          );
@@ -626,6 +644,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn if_else() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
@@ -635,7 +654,7 @@ assert_eq!(result, 3.0);
          else
              return 2;
          end
-         "#
+         "#, &config
              ),
              1.0
          );
@@ -643,6 +662,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn only_if() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
@@ -654,7 +674,7 @@ assert_eq!(result, 3.0);
                  end
                  
                  return x
-         "#
+         "#, &config
              ),
              10.0
          );
@@ -662,6 +682,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn function_call() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
@@ -675,7 +696,7 @@ assert_eq!(result, 3.0);
                  let z sum (i d);
  
                  return z
-         "#
+         "#, &config
          ),
              12.0
          );
@@ -683,6 +704,7 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn collatz_conjecture() {
+        let config = CompileConfig::from(true, false);
          assert_eq!(
              Interpreter::from_source(
                  r#"
@@ -699,7 +721,7 @@ assert_eq!(result, 3.0);
                  end
  
                  return collatz (123)
-         "#
+         "#, &config
          ),
              1.0
          );
@@ -707,12 +729,59 @@ assert_eq!(result, 3.0);
  
      #[test]
      fn read_from_file() {
-         assert_eq!(Interpreter::from_file("examples/test.laspa"), 1.0);
+        let config = CompileConfig::from(true, false);
+         assert_eq!(Interpreter::from_file("examples/test.laspa", &config), 1.0);
      }
  
      #[test]
-     fn llvm_compiler() {
-         assert_eq!(llvm::LLVMCompiler::from_source("+ 1 2").unwrap(), 3.0);
+     fn llvm_jit_operations() {
+        let config = CompileConfig::from(true, false);
+         assert_eq!(llvm::LLVMCompiler::from_source("+ 1 2", &config).unwrap(), 3.0);
+     }
+
+     #[test]
+     fn llvm_jit_bind_val() {
+        let config = CompileConfig::from(true, false);
+         assert_eq!(llvm::LLVMCompiler::from_source("let x 10", &config).unwrap(), 0.0);
+     }
+
+     #[test]
+     fn llvm_jit_variables() {
+        let config = CompileConfig::from(true, false);
+         assert_eq!(llvm::LLVMCompiler::from_source("let x 10; + x 2", &config).unwrap(), 12.0);
+     }
+
+     #[test]
+     fn llvm_jit_return() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(llvm::LLVMCompiler::from_source("let x 10; + x 2;return x", &config).unwrap(), 10.0);
+     }
+
+     #[test]
+     fn llvm_jit_mutate() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(llvm::LLVMCompiler::from_source("let x 10;:= x + x 2;return x", &config).unwrap(), 12.0);
+     }
+
+     #[test]
+     fn llvm_jit_while() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(llvm::LLVMCompiler::from_source(
+                 r#"
+         let x 0;
+         // let y 0;
+         
+         while < x 1000
+             let i 0;
+             while < i 100
+                 := x + x 1;
+                 := i + i 1;
+             end
+         end
+         
+         return + x i;
+         "#, &config
+             ).unwrap(), 1100.0);
      }
  }
  
