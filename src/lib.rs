@@ -475,7 +475,7 @@ impl CompileConfig {
          let mut tokens = lex(source);
          // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
          let nodes = parse(&mut tokens, &mut HashMap::new());
-         println!("ast: {:?}", nodes);
+         println!("ast: {:#?}", nodes);
          Self::from_ast(nodes, config)
      }
  
@@ -857,12 +857,25 @@ impl CompileConfig {
                          else
                              := n + * 3 n 1
                          end
-                         print n
+                         := n n
                      end
                      return n
                  end
  
                  return collatz (123)
+         "#, &config
+         ).unwrap(),
+             1.0
+         );
+     }
+
+     #[test]
+     fn llvm_jit_precision() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(
+            llvm::LLVMCompiler::from_source(
+                 r#"
+                 return % 3 2
          "#, &config
          ).unwrap(),
              1.0

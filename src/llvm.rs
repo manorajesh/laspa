@@ -93,13 +93,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
         let basic_block = self.context.append_basic_block(main_func, "entry");
         self.builder.position_at_end(basic_block);
 
-        let function = self.compile_prototype(&FnExpr {
-            name: "main".to_string(),
-            args: vec![],
-            body: Vec::new(), // not used
-        })?;
-
-        self.fn_value_opt = Some(function);
+        self.fn_value_opt = Some(main_func);
 
         let ret = self.gen_body(&nodes)?.as_float().expect("Expected float value. Comparisons cannot be returned");
 
@@ -315,17 +309,17 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     self.variables.pop();
 
                     // return the whole thing after verification and optimization
-                    if function.verify(true) {
-                        self.fpm.run_on(&function);
+                    // if function.verify(true) {
+                    //     self.fpm.run_on(&function);
 
-                        // return Ok(function)
-                    } else {
-                        unsafe {
-                            function.delete();
-                        }
+                    //     // return Ok(function)
+                    // } else {
+                    //     unsafe {
+                    //         function.delete();
+                    //     }
 
-                        return Err("Invalid generated function.")
-                    }
+                    //     return Err("Invalid generated function.")
+                    // }
 
                 }
                 Node::FnCallExpr(e) => {
