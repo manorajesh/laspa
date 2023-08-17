@@ -1,8 +1,8 @@
 use std::{collections::HashMap, path::Path};
 
-use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue}, targets::{Target, InitializationConfig}};
+use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue, BasicMetadataValueEnum, PointerValue}, targets::{Target, InitializationConfig}, types::BasicMetadataTypeEnum};
 
-use crate::{Compile, Node, Op, CompileConfig};
+use crate::{Compile, Node, Op, CompileConfig, FnExpr};
 
 pub enum LLVMValue<'ctx> {
     Float(FloatValue<'ctx>),
@@ -61,6 +61,7 @@ pub struct LLVMCompiler<'a, 'ctx> {
     pub module: &'a Module<'ctx>,
     pub fpm: &'a PassManager<FunctionValue<'ctx>>,
     pub variables: Vec<HashMap<String, inkwell::values::PointerValue<'ctx>>>,
+    fn_value_opt: Option<FunctionValue<'ctx>>,
 }
 
 impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
@@ -77,6 +78,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
             module,
             fpm,
             variables,
+            fn_value_opt: None,
         }
     }
 
@@ -90,6 +92,14 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
 
         let basic_block = self.context.append_basic_block(main_func, "entry");
         self.builder.position_at_end(basic_block);
+
+        let function = self.compile_prototype(&FnExpr {
+            name: "main".to_string(),
+            args: vec![],
+            body: Vec::new(), // not used
+        })?;
+
+        self.fn_value_opt = Some(function);
 
         let ret = self.gen_body(&nodes)?.as_float().expect("Expected float value. Comparisons cannot be returned");
 
@@ -263,49 +273,82 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     // Save the current block so we can restore it later.
                     let current_block = self.builder.get_insert_block().unwrap();
 
-                    // Create a new local variable scope for this function.
-                    self.variables.push(HashMap::new());
-                
-                    let f64_type = self.context.f64_type();
-                    let param_types = vec![f64_type.into(); e.args.len()];
-                    let fn_type = f64_type.fn_type(&param_types, false);
-                    let function = self.module.add_function(&e.name, fn_type, None);
+                    let function = self.compile_prototype(e)?;
+
+                    // got external function, returning only compiled prototype
+                    // if self.function.body.is_none() {
+                    //     return Ok(function);
+                    // }
+
                     let entry = self.context.append_basic_block(function, "entry");
+
                     self.builder.position_at_end(entry);
-                
-                    // Load arguments and insert them into the local variable scope.
-                    for (i, arg) in e.args.iter().enumerate() {
-                        let param_value = function.get_nth_param(i as u32).unwrap();
-                    
-                        let name = if let Node::Variable(v) = arg {
-                            v
+
+                    self.fn_value_opt = Some(function);
+
+                    // build variables map
+                    self.variables.push(HashMap::new());
+                    self.variables.reserve(e.args.len());
+
+                    // all paramters will be mutable by default
+                    // so we need to create alloca for each of them
+                    for (i, arg) in function.get_param_iter().enumerate() {
+                        let arg_name = if let Node::Variable(name) = &e.args[i] {
+                            name
                         } else {
                             panic!("Expected variable name")
                         };
-                    
+                        let alloca = self.create_entry_block_alloca(arg_name);
+
+                        self.builder.build_store(alloca, arg);
+
                         self.variables
                             .last_mut()
                             .expect("No variable scopes found")
-                            .insert(name.to_string(), param_value);
+                            .insert(arg_name.to_string(), alloca);
                     }
-                    
-                
-                    // Process the function body.
-                    let ret = self.gen_body(&e.body)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
-                    println!("ret: {:?}", ret);
-                
-                    // End of function; pop off its local variable scope.
-                    self.variables.pop().unwrap();
+
+                    // compile body
+                    let _body = self.gen_body(&e.body)?;
 
                     self.builder.position_at_end(current_block);
+                    self.variables.pop();
 
-                    return Ok(LLVMValue::Float(ret));
+                    // return the whole thing after verification and optimization
+                    if function.verify(true) {
+                        self.fpm.run_on(&function);
+
+                        // return Ok(function)
+                    } else {
+                        unsafe {
+                            function.delete();
+                        }
+
+                        return Err("Invalid generated function.")
+                    }
+
                 }
                 Node::FnCallExpr(e) => {
-                    let function = self.module.get_function(&e.name).expect("Function not defined");
-                    let arguments: Vec<_> = e.args.iter().map(|arg| self.gen_expr(arg).unwrap().as_float().unwrap().into()).collect();
-                    let call = self.builder.build_call(function, &arguments, "calltmp");
-                    return Ok(LLVMValue::Float(call.try_as_basic_value().left().unwrap().into_float_value()));
+                    let mut compiled_args = Vec::with_capacity(e.args.len());
+
+                    for arg in &e.args {
+                        compiled_args.push(self.gen_expr(&arg)?.as_float().unwrap());
+                    }
+
+                    let argsv: Vec<BasicMetadataValueEnum> =
+                        compiled_args.iter().by_ref().map(|&val| val.into()).collect();
+
+                    let function = self.module.get_function(&e.name).expect("Function not found");
+
+                    match self
+                        .builder
+                        .build_call(function, argsv.as_slice(), "tmp")
+                        .try_as_basic_value()
+                        .left()
+                    {
+                        Some(value) => return Ok(LLVMValue::Float(value.into_float_value())),
+                        None => return Err("Invalid call produced."),
+                    };
                 }  
                 Node::PrintStdoutExpr(_e) => {
                     todo!("Return expression")
@@ -313,6 +356,49 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
             }
             Ok(LLVMValue::Float(self.context.f64_type().const_float(0.0)))
         }
+
+        #[inline]
+        fn fn_value(&self) -> FunctionValue<'ctx> {
+            self.fn_value_opt.unwrap()
+        }
+
+        fn create_entry_block_alloca(&self, name: &str) -> PointerValue<'ctx> {
+            let builder = self.context.create_builder();
+    
+            let entry = self.fn_value().get_first_basic_block().unwrap();
+    
+            match entry.get_first_instruction() {
+                Some(first_instr) => builder.position_before(&first_instr),
+                None => builder.position_at_end(entry),
+            }
+    
+            builder.build_alloca(self.context.f64_type(), name)
+        }
+
+        fn compile_prototype(&mut self, proto: &FnExpr) -> Result<FunctionValue<'ctx>, &'static str> {
+            let ret_type = self.context.f64_type();
+            let args_types = std::iter::repeat(ret_type)
+                .take(proto.args.len())
+                .map(|f| f.into())
+                .collect::<Vec<BasicMetadataTypeEnum>>();
+            let args_types = args_types.as_slice();
+    
+            let fn_type = self.context.f64_type().fn_type(args_types, false);
+            let fn_val = self.module.add_function(proto.name.as_str(), fn_type, None);
+    
+            // set arguments names
+            for (i, arg) in fn_val.get_param_iter().enumerate() {
+                let name = if let Node::Variable(name) = &proto.args[i] {
+                    name
+                } else {
+                    panic!("Expected variable name")
+                };
+                arg.set_name(name);
+            }            
+    
+            // finally return built prototype
+            Ok(fn_val)
+    }
 }
 
 impl Compile for LLVMCompiler<'_, '_> {
@@ -337,7 +423,7 @@ impl Compile for LLVMCompiler<'_, '_> {
         if config.use_jit {
             Target::initialize_native(&InitializationConfig::default()).expect("Failed to initialize native target");
 
-            let execution_engine = module.create_jit_execution_engine(inkwell::OptimizationLevel::Default).expect("Failed to create JIT execution engine");
+            let execution_engine = module.create_jit_execution_engine(inkwell::OptimizationLevel::Aggressive).expect("Failed to create JIT execution engine");
 
             let main_func = unsafe { execution_engine.get_function::<unsafe extern "C" fn() -> f64>("main").expect("Failed to get main function") };
             let result = unsafe { main_func.call() };

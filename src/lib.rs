@@ -824,7 +824,7 @@ impl CompileConfig {
 
      #[test]
      fn llvm_jit_function_call() {
-        let config = CompileConfig::from(false, true);
+        let config = CompileConfig::from(true, true);
          assert_eq!(
             llvm::LLVMCompiler::from_source(
                  r#"
@@ -841,6 +841,31 @@ impl CompileConfig {
          "#, &config
          ).unwrap(),
              12.0
+         );
+     }
+
+     #[test]
+     fn llvm_jit_collatz_conjecture() {
+        let config = CompileConfig::from(true, true);
+         assert_eq!(
+            llvm::LLVMCompiler::from_source(
+                 r#"
+                 fn collatz (n)
+                     while > n 1
+                         if == % n 2 0
+                             := n / n 2
+                         else
+                             := n + * 3 n 1
+                         end
+                         print n
+                     end
+                     return n
+                 end
+ 
+                 return collatz (123)
+         "#, &config
+         ).unwrap(),
+             1.0
          );
      }
  }
