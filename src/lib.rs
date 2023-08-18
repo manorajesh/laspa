@@ -452,14 +452,15 @@ assert_eq!(result, 3.0);
 pub struct CompileConfig {
     pub use_jit: bool,
     pub show_ir: bool,
+    pub optimization_level: u8,
+    pub name: String,
 }
 
 impl CompileConfig {
     pub fn from(use_jit: bool, show_ir: bool) -> Self {
-        Self { use_jit, show_ir }
+        Self { use_jit, show_ir, optimization_level: 1, name: String::from("main") }
     }
 }
-
  
  /// The default trait for compiling a language. This is used to compile a language from a specific source.
  /// This trait can be implemented for any output: llvm, interpreter, etc.
@@ -473,9 +474,9 @@ impl CompileConfig {
      /// Compile a string into the output type.
      fn from_source(source: &str, config: &CompileConfig) -> Self::Output {
          let mut tokens = lex(source);
-         // println!("tokens: {:?}", lex(source).collect::<Vec<_>>());
+         log::trace!("tokens: {:?}", lex(source).collect::<Vec<_>>());
          let nodes = parse(&mut tokens, &mut HashMap::new());
-         println!("ast: {:#?}", nodes);
+         log::debug!("ast: {:?}", nodes);
          Self::from_ast(nodes, config)
      }
  
@@ -486,6 +487,8 @@ impl CompileConfig {
      }
  }
  
+ pub type Compiler<'a> = llvm::LLVMCompiler<'a, 'a>;
+
  /// The default interpreter.
  pub struct Interpreter;
  
@@ -846,7 +849,7 @@ impl CompileConfig {
 
      #[test]
      fn llvm_jit_collatz_conjecture() {
-        let config = CompileConfig::from(false, true);
+        let config = CompileConfig::from(true, true);
          assert_eq!(
             llvm::LLVMCompiler::from_source(
                  r#"

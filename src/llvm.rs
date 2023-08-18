@@ -423,7 +423,7 @@ impl Compile for LLVMCompiler<'_, '_> {
         if config.show_ir {
             let ir = module.print_to_string();
 
-            println!("\n{}\n", ir);
+            log::trace!("\n{}\n", ir);
         }
 
         if config.use_jit {
@@ -459,7 +459,7 @@ impl Compile for LLVMCompiler<'_, '_> {
             .expect("Failed to run clang");
 
         if !output.status.success() {
-            eprintln!(
+            log::error!(
                 "Clang failed with error:\n{}",
                 String::from_utf8_lossy(&output.stderr)
             );
