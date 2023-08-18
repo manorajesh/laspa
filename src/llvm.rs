@@ -586,7 +586,9 @@ impl Compile for LLVMCompiler<'_, '_> {
 
         config.progress.set_message("Linking");
         config.progress.inc(1);
-        let output = Command::new("clang")
+        let clang_path = std::env::var("LLVM_SYS_160_PREFIX").log_expect("LLVM_SYS_160_PREFIX not set");
+        let clang_path = clang_path + "/bin/clang";
+        let output = Command::new(clang_path)
             .arg(temp_path)
             .arg("target/release/liblaspa.a")
             .arg("-o")

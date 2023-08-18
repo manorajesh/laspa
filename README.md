@@ -13,14 +13,33 @@ implement a compiler with the help of [LLVM](https://llvm.org/docs/LangRef.html#
 
 ## Installation
 ```shell
-git clone https://github.com/manorajesh/laspa.git && cd laspa
-cargo test
+cargo install laspa
 ```
 
-The language is currently only a library with a full test suite. 
+You will need the llvm toolchain to build the executable. Clang is also used for linking.
+```shell
+brew install llvm && export LLVM_SYS_160_PREFIX='/usr/local/opt/llvm@16'
+```
 
 ## Usage
 See [this test file](https://github.com/manorajesh/laspa/blob/master/examples/test.laspa) for example syntax.
+```
+A simple Lisp-like language built with Rust
+
+Usage: laspa [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>  The file to build
+
+Options:
+  -O, --optimization-level <OPTIMIZATION_LEVEL>  Optimization level for the compiler [default: 1]
+  -i, --interpret                                Interpret the file
+  -v, --verbose...                               Verbose output
+  -o, --executable-name <EXECUTABLE_NAME>        Executable name [default: main]
+      --jit                                      Execute IR with JIT
+  -h, --help                                     Print help (see more with '--help')
+  -V, --version                                  Print version
+  ```
 
 ## Why
 I was reading an [article](https://mhdm.dev/posts/sb_lower_bound/) on the fastest implementation of a binary search algorithm.
@@ -29,4 +48,4 @@ I saw `llvm` and thought to myself: "Hmm, wouldn't it be interesting to make a l
 
 #### Important Code
 The `lex`, `parse`, and `eval` functions are the meat of the execution of the language. Those familiar with language
-development will recognize those names.
+development will recognize those names. `llvm.rs` is crucial to generating and compiling the IR for LLVM executations.

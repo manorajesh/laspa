@@ -45,7 +45,11 @@ fn main() {
     };
 
     config.progress.enable_steady_tick(Duration::from_millis(50));
-    config.progress.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/white} {pos:>7}/{len:7} {msg} {spinner}").unwrap().progress_chars("==>-"));
+    if args.verbose > 0 {
+        config.progress.set_style(ProgressStyle::default_bar().template("{msg} {spinner}").unwrap());
+    } else {
+        config.progress.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/white} {pos:>7}/{len:7} {msg} {spinner}").unwrap().progress_chars("==>-"));
+    }
 
     if args.interpret {
         log::info!("Interpreting file {}", args.file);

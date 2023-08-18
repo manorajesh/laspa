@@ -17,10 +17,6 @@ pub struct Args {
     #[clap(short = 'O', long, default_value = "1")]
     pub optimization_level: u8,
 
-    /// Produce an executable file
-    #[clap(short, long, default_value = "true")]
-    pub executable: bool,
-
     /// Interpret the file
     #[clap(short, long)]
     pub interpret: bool,
