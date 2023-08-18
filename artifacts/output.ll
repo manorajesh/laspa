@@ -5,7 +5,6 @@ define double @main() {
 entry:
   %tmp = call double @collatz(double 1.230000e+02)
   ret double %tmp
-  ret double %tmp
 }
 
 define double @collatz(double %n) {
