@@ -846,7 +846,7 @@ impl CompileConfig {
 
      #[test]
      fn llvm_jit_collatz_conjecture() {
-        let config = CompileConfig::from(true, true);
+        let config = CompileConfig::from(false, true);
          assert_eq!(
             llvm::LLVMCompiler::from_source(
                  r#"
@@ -857,7 +857,7 @@ impl CompileConfig {
                          else
                              := n + * 3 n 1
                          end
-                         // print n
+                         print n
                      end
                      return n
                  end

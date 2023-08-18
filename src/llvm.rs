@@ -94,14 +94,16 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
 
         self.fn_value_opt = Some(main_func);
 
-        let ret = self.gen_body(&nodes)?.as_float().expect("Expected float value. Comparisons cannot be returned");
+        let ret = self.gen_body(&nodes, true)?.as_float().expect("Expected float value. Comparisons cannot be returned");
 
-        self.builder.build_return(Some(&ret));
+        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder.build_return(Some(&ret));
+        }
 
         Ok(main_func)
     }
 
-    pub fn gen_body(&mut self, nodes: &[Node]) -> Result<LLVMValue<'ctx>, &'static str> {
+    pub fn gen_body(&mut self, nodes: &[Node], is_main: bool) -> Result<LLVMValue<'ctx>, &'static str> {
         let mut result: Option<LLVMValue<'ctx>> = None;
         for node in nodes {
             result = Some(self.gen_expr(node)?);
@@ -119,8 +121,8 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     return Ok(self.context.f64_type().const_float(n.0).into());
                 }
                 Node::BinaryExpr(e) => {
-                    let lhs = self.gen_body(&e.lhs)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
-                    let rhs = self.gen_body(&e.rhs)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+                    let lhs = self.gen_body(&e.lhs, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+                    let rhs = self.gen_body(&e.rhs, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
 
                     match e.op {
                         Op::Add => {
@@ -150,7 +152,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     }
                 }
                 Node::BindExpr(e) => {
-                    let value = self.gen_body(&e.value)?.as_float().expect("Expected float value");
+                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value");
                 
                     let f64_type = self.context.f64_type();
                     let alloca = self.builder.build_alloca(f64_type, &e.name.as_str());
@@ -175,16 +177,13 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 }
                  
                 Node::ReturnExpr(e) => {
-                    let value = self.gen_body(&e.value)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
 
-                    if self.fn_value().get_name().to_str().unwrap() != "main" {
-                        self.builder.build_return(Some(&value));
-                        return Ok(LLVMValue::Float(value));
-                    }
+                    self.builder.build_return(Some(&value));
                     return Ok(LLVMValue::Float(value));
                 }
                 Node::MutateExpr(e) => {
-                    let value = self.gen_body(&e.value)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
                     let alloca = self.variables
                                     .last()             
                                     .expect("No variable scopes found")
@@ -205,7 +204,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 
                     // Now, handle the loop condition
                     self.builder.position_at_end(loop_cond_bb);
-                    let cond = self.gen_body(&e.condition)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
+                    let cond = self.gen_body(&e.condition, false)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
                     self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
                 
                     // Generate the loop body
@@ -236,7 +235,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 
                     // Evaluate the condition
                     self.builder.position_at_end(if_cond_bb);
-                    let cond = self.gen_body(&e.condition)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
+                    let cond = self.gen_body(&e.condition, false)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
                     
                     match else_bb {
                         Some(else_block) => {
@@ -306,23 +305,23 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     }
 
                     // compile body
-                    let _body = self.gen_body(&e.body)?;
+                    let _body = self.gen_body(&e.body, false)?;
 
                     self.builder.position_at_end(current_block);
                     self.variables.pop();
 
                     // return the whole thing after verification and optimization
-                    // if function.verify(true) {
-                    //     self.fpm.run_on(&function);
+                    if function.verify(true) {
+                        self.fpm.run_on(&function);
 
-                    //     // return Ok(function)
-                    // } else {
-                    //     unsafe {
-                    //         function.delete();
-                    //     }
+                        // return Ok(function)
+                    } else {
+                        unsafe {
+                            function.delete();
+                        }
 
-                    //     return Err("Invalid generated function.")
-                    // }
+                        return Err("Invalid generated function.")
+                    }
 
                 }
                 Node::FnCallExpr(e) => {
@@ -348,7 +347,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     };
                 }  
                 Node::PrintStdoutExpr(e) => {
-                    let value = self.gen_body(&e.value)?.as_float().expect("Expected float value for print");
+                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value for print");
                     let print_fn = self.module.get_function("print_f64")
                                     .unwrap_or_else(|| {
                                         let fn_type = self.context.f64_type().fn_type(&[self.context.f64_type().into()], false);
