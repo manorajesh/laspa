@@ -18,6 +18,16 @@ use inkwell::{
     values::{BasicMetadataValueEnum, FloatValue, FunctionValue, IntValue, PointerValue},
 };
 
+#[macro_export]
+macro_rules! log_and_exit {
+    ($($arg:tt)*) => {
+        {
+            log::error!($($arg)*);
+            std::process::exit(1);
+        }
+    };
+}
+
 pub enum LLVMValue<'ctx> {
     Float(FloatValue<'ctx>),
     Int(IntValue<'ctx>),
@@ -112,7 +122,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
         let ret = self
             .gen_body(&nodes)?
             .as_float()
-            .expect("Expected float value. Comparisons cannot be returned");
+            .log_expect("Expected float value. Comparisons cannot be returned");
 
         if self
             .builder
@@ -148,11 +158,11 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let lhs = self
                     .gen_body(&e.lhs)?
                     .as_float()
-                    .expect("Expected float value. Comparisons cannot be used for operations");
+                    .log_expect("Expected float value. Comparisons cannot be used for operations");
                 let rhs = self
                     .gen_body(&e.rhs)?
                     .as_float()
-                    .expect("Expected float value. Comparisons cannot be used for operations");
+                    .log_expect("Expected float value. Comparisons cannot be used for operations");
 
                 match e.op {
                     Op::Add => {
@@ -210,7 +220,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let value = self
                     .gen_body(&e.value)?
                     .as_float()
-                    .expect("Expected float value");
+                    .log_expect("Expected float value");
 
                 let f64_type = self.context.f64_type();
                 let alloca = self.builder.build_alloca(f64_type, e.name.as_str());
@@ -218,7 +228,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
 
                 self.variables
                     .last_mut()
-                    .expect("No variable scopes found")
+                    .log_expect("No variable scopes found")
                     .insert(e.name.to_string(), alloca);
             }
             Node::Variable(name) => {
@@ -226,9 +236,9 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let alloca = self
                     .variables
                     .last()
-                    .expect("No variable scopes found")
+                    .log_expect("No variable scopes found")
                     .get(name)
-                    .unwrap_or_else(|| panic!("Variable '{}' not found!", name));
+                    .unwrap_or_else(|| log_and_exit!("Variable '{}' not found!", name));
 
                 let loaded_value = self.builder.build_load(f64_type, *alloca, name);
 
@@ -239,7 +249,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let value = self
                     .gen_body(&e.value)?
                     .as_float()
-                    .expect("Expected float value. Comparisons cannot be used for operations");
+                    .log_expect("Expected float value. Comparisons cannot be used for operations");
 
                 self.builder.build_return(Some(&value));
                 return Ok(LLVMValue::Float(value));
@@ -248,13 +258,13 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let value = self
                     .gen_body(&e.value)?
                     .as_float()
-                    .expect("Expected float value. Comparisons cannot be used for operations");
+                    .log_expect("Expected float value. Comparisons cannot be used for operations");
                 let alloca = self
                     .variables
                     .last()
-                    .expect("No variable scopes found")
+                    .log_expect("No variable scopes found")
                     .get(&e.name)
-                    .unwrap_or_else(|| panic!("Variable '{}' not found to mutate!", e.name));
+                    .unwrap_or_else(|| log_and_exit!("Variable '{}' not found to mutate!", e.name));
 
                 self.builder.build_store(*alloca, value);
             }
@@ -278,7 +288,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let cond = self
                     .gen_body(&e.condition)?
                     .as_int()
-                    .expect("Expected int value. Other operations cannot be used for comparisons");
+                    .log_expect("Expected int value. Other operations cannot be used for comparisons");
                 self.builder
                     .build_conditional_branch(cond, loop_body_bb, loop_end_bb);
 
@@ -318,7 +328,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let cond = self
                     .gen_body(&e.condition)?
                     .as_int()
-                    .expect("Expected int value. Other operations cannot be used for comparisons");
+                    .log_expect("Expected int value. Other operations cannot be used for comparisons");
 
                 match else_bb {
                     Some(else_block) => {
@@ -377,7 +387,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                     let arg_name = if let Node::Variable(name) = &e.args[i] {
                         name
                     } else {
-                        panic!("Expected variable name")
+                        log_and_exit!("Expected variable name")
                     };
                     let alloca = self.create_entry_block_alloca(arg_name);
 
@@ -385,7 +395,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
 
                     self.variables
                         .last_mut()
-                        .expect("No variable scopes found")
+                        .log_expect("No variable scopes found")
                         .insert(arg_name.to_string(), alloca);
                 }
 
@@ -424,7 +434,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let function = self
                     .module
                     .get_function(&e.name)
-                    .expect("Function not found");
+                    .log_expect("Function not found");
 
                 match self
                     .builder
@@ -440,7 +450,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 let value = self
                     .gen_body(&e.value)?
                     .as_float()
-                    .expect("Expected float value for print");
+                    .log_expect("Expected float value for print");
                 let print_fn = self.module.get_function("print_f64").unwrap_or_else(|| {
                     let fn_type = self
                         .context
@@ -489,7 +499,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
             let name = if let Node::Variable(name) = &proto.args[i] {
                 name
             } else {
-                panic!("Expected variable name")
+                log_and_exit!("Expected variable name")
             };
             arg.set_name(name);
         }
@@ -513,7 +523,7 @@ impl Compile for LLVMCompiler<'_, '_> {
 
         let mut compiler = LLVMCompiler::new(&context, &builder, &module, &fpm);
 
-        compiler.codegen(nodes).expect("Failed to generate IR");
+        compiler.codegen(nodes).log_expect("Failed to generate IR");
 
         if config.show_ir {
             let ir = module.print_to_string();
@@ -521,27 +531,27 @@ impl Compile for LLVMCompiler<'_, '_> {
             log::trace!("\n{}\n", ir);
         }
 
-        if config.use_jit {
-            Target::initialize_native(&InitializationConfig::default())
-                .expect("Failed to initialize native target");
+        Target::initialize_native(&InitializationConfig::default())
+                .log_expect("Failed to initialize native target");
 
+        if config.use_jit {
             let execution_engine = module
                 .create_jit_execution_engine(inkwell::OptimizationLevel::Aggressive)
-                .expect("Failed to create JIT execution engine");
+                .log_expect("Failed to create JIT execution engine");
 
             let main_func = unsafe {
                 execution_engine
                     .get_function::<unsafe extern "C" fn() -> f64>("main")
-                    .expect("Failed to get main function")
+                    .log_expect("Failed to get main function")
             };
             let result = unsafe { main_func.call() };
             return Ok(result);
         }
 
         // let path = Path::new("output.ll");
-        // module.print_to_file(&path).expect("Error writing file");
+        // module.print_to_file(&path).log_expect("Error writing file");
 
-        module.verify().expect("Error verifying module");
+        module.verify().log_expect("Error verifying module");
 
         let hash = compute_hash(&module.to_string());
         let tempname = format!("output-{hash}.o");
@@ -549,7 +559,7 @@ impl Compile for LLVMCompiler<'_, '_> {
 
         let target_triple = inkwell::targets::TargetMachine::get_default_triple();
         let target = inkwell::targets::Target::from_triple(&target_triple)
-            .expect("Error getting target from triple");
+            .log_expect("Error getting target from triple");
         let target_machine = target
             .create_target_machine(
                 &target_triple,
@@ -559,10 +569,10 @@ impl Compile for LLVMCompiler<'_, '_> {
                 RelocMode::Default,
                 CodeModel::Default,
             )
-            .expect("Error creating target machine");
+            .log_expect("Error creating target machine");
         target_machine
             .write_to_file(&module, inkwell::targets::FileType::Object, temp_path)
-            .expect("Error writing object file");
+            .log_expect("Error writing object file");
 
         let output = Command::new("clang")
             .arg(temp_path)
@@ -570,7 +580,7 @@ impl Compile for LLVMCompiler<'_, '_> {
             .arg("-o")
             .arg("main")
             .output()
-            .expect("Failed to run clang");
+            .log_expect("Failed to run clang");
 
         if !output.status.success() {
             log::error!(
@@ -581,7 +591,7 @@ impl Compile for LLVMCompiler<'_, '_> {
             return Err("Clang failed");
         }
 
-        fs::remove_file(temp_path).expect("Error removing temp file");
+        fs::remove_file(temp_path).log_expect("Error removing temp file");
 
         Ok(0.0)
     }
@@ -649,4 +659,35 @@ fn compute_hash<T: Hash>(t: &T) -> u64 {
 
 pub extern "C" fn print_f64(value: f64) {
     println!("{}", value);
+}
+
+trait LogExpect<T> {
+    fn log_expect(self, msg: &str) -> T;
+}
+
+impl<T> LogExpect<T> for Option<T> {
+    fn log_expect(self, msg: &str) -> T {
+        match self {
+            Some(val) => val,
+            None => {
+                log::error!("{}", msg);
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+impl<T, E> LogExpect<T> for Result<T, E> 
+where E: std::fmt::Display
+{
+    fn log_expect(self, msg: &str) -> T {
+        match self {
+            Ok(val) => val,
+            Err(e) => {
+                log::error!("{}", msg);
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }

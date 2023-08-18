@@ -105,7 +105,7 @@ impl Op {
             "<" => Self::Lt,
             "%" => Self::Mod,
             "==" => Self::Eqt,
-            _ => panic!("Invalid operator"),
+            _ => log_and_exit!("Invalid operator"),
         }
     }
 }
@@ -339,7 +339,10 @@ fn parse_sentence(
             }
         },
 
-        None => return Err("No tokens found".to_string()),
+        None => {
+            log::warn!("No tokens found in statement");
+            return Err("No tokens found".to_string())
+        },
     }
 
     Ok(nodes)
@@ -349,7 +352,7 @@ fn parse_args(tokens: String, functions: &mut HashMap<String, FnExpr>) -> Vec<No
     let mut nodes = Vec::new();
     let mut tokens = tokens;
     if !tokens.starts_with('(') && !tokens.ends_with(')') {
-        panic!("Invalid function arguments. Must be in the form (arg1 arg2 ...)");
+        log_and_exit!("Invalid function arguments. Must be in the form (arg1 arg2 ...)");
     }
 
     tokens.remove(0);
@@ -400,7 +403,7 @@ pub fn eval(
             }
             Node::Variable(v) => match globals.get(v) {
                 Some(n) => *n,
-                None => panic!("Variable not found: {v}"),
+                None => log_and_exit!("Variable not found: {v}"),
             },
             Node::ReturnExpr(e) => {
                 return_val = Some(eval(&e.value, globals, functions));
@@ -411,7 +414,7 @@ pub fn eval(
                 if let Some(n) = globals.get_mut(&e.name) {
                     *n = value;
                 } else {
-                    panic!("Variable not found: {}", e.name);
+                    log_and_exit!("Variable not found: {}", e.name);
                 }
                 value
             }
@@ -439,13 +442,13 @@ pub fn eval(
                         let v = eval(&vec![arg.clone()], globals, functions);
                         let k = match param {
                             Node::Variable(v) => v,
-                            _ => panic!("Invalid function argument"),
+                            _ => log_and_exit!("Invalid function argument"),
                         };
                         local_scope.insert(k.clone(), v);
                     }
                     eval(&f.body, &mut local_scope, functions)
                 } else {
-                    panic!("Function not found: {}", e.name);
+                    log_and_exit!("Function not found: {}", e.name);
                 }
             }
             Node::PrintStdoutExpr(e) => {
@@ -903,19 +906,20 @@ mod tests {
         assert_eq!(
             llvm::LLVMCompiler::from_source(
                 r#"
-                 fn collatz (n)
-                     while > n 1
-                         if == % n 2 0
-                             := n / n 2
-                         else
-                             := n + * 3 n 1
-                         end
-                         print n
-                     end
-                     return n
-                 end
- 
-                 return collatz (123)
+                fn collatz (n)
+                while > n 1
+                    if == % n 2 0
+                        := n / n 2
+                    else
+                        := n + * 3 n 1
+                    end
+                    // cannot print in llvm jit
+                    // print n
+                end
+                return n
+            end
+            
+            return collatz (123)
          "#,
                 &config
             )

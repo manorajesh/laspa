@@ -28,6 +28,11 @@ fn main() {
         return;
     }
 
+    if args.jit {
+        log::info!("Using JIT");
+        log::warn!("Print IR is not supported with JIT");
+    }
+
     let config = CompileConfig {
         use_jit: args.jit,
         optimization_level: args.optimization_level,
