@@ -1,7 +1,22 @@
-use std::{collections::{HashMap, hash_map::DefaultHasher}, path::Path, hash::{Hash, Hasher}, process::Command, fs};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    fs,
+    hash::{Hash, Hasher},
+    path::Path,
+    process::Command,
+};
 
-use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue, BasicMetadataValueEnum, PointerValue}, targets::{Target, InitializationConfig, RelocMode, CodeModel}, types::BasicMetadataTypeEnum};
-use crate::{Compile, Node, Op, CompileConfig, FnExpr};
+use crate::{Compile, CompileConfig, FnExpr, Node, Op};
+use inkwell::{
+    self,
+    builder::Builder,
+    context::Context,
+    module::Module,
+    passes::PassManager,
+    targets::{CodeModel, InitializationConfig, RelocMode, Target},
+    types::BasicMetadataTypeEnum,
+    values::{BasicMetadataValueEnum, FloatValue, FunctionValue, IntValue, PointerValue},
+};
 
 pub enum LLVMValue<'ctx> {
     Float(FloatValue<'ctx>),
@@ -70,7 +85,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
         module: &'a Module<'ctx>,
         fpm: &'a PassManager<FunctionValue<'ctx>>,
     ) -> Self {
-        let variables= vec![HashMap::new()];
+        let variables = vec![HashMap::new()];
         Self {
             context,
             builder,
@@ -94,16 +109,25 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
 
         self.fn_value_opt = Some(main_func);
 
-        let ret = self.gen_body(&nodes, true)?.as_float().expect("Expected float value. Comparisons cannot be returned");
+        let ret = self
+            .gen_body(&nodes)?
+            .as_float()
+            .expect("Expected float value. Comparisons cannot be returned");
 
-        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+        if self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_terminator()
+            .is_none()
+        {
             self.builder.build_return(Some(&ret));
         }
 
         Ok(main_func)
     }
 
-    pub fn gen_body(&mut self, nodes: &[Node], is_main: bool) -> Result<LLVMValue<'ctx>, &'static str> {
+    pub fn gen_body(&mut self, nodes: &[Node]) -> Result<LLVMValue<'ctx>, &'static str> {
         let mut result: Option<LLVMValue<'ctx>> = None;
         for node in nodes {
             result = Some(self.gen_expr(node)?);
@@ -111,296 +135,367 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
             if let Node::ReturnExpr(_) = node {
                 return Ok(result.unwrap());
             }
-        };
+        }
         Ok(result.unwrap_or(LLVMValue::Float(self.context.f64_type().const_float(0.0))))
     }
 
     pub fn gen_expr(&mut self, node: &Node) -> Result<LLVMValue<'ctx>, &'static str> {
-            match node {
-                Node::Number(n) => {
-                    return Ok(self.context.f64_type().const_float(n.0).into());
-                }
-                Node::BinaryExpr(e) => {
-                    let lhs = self.gen_body(&e.lhs, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
-                    let rhs = self.gen_body(&e.rhs, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+        match node {
+            Node::Number(n) => {
+                return Ok(self.context.f64_type().const_float(n.0).into());
+            }
+            Node::BinaryExpr(e) => {
+                let lhs = self
+                    .gen_body(&e.lhs)?
+                    .as_float()
+                    .expect("Expected float value. Comparisons cannot be used for operations");
+                let rhs = self
+                    .gen_body(&e.rhs)?
+                    .as_float()
+                    .expect("Expected float value. Comparisons cannot be used for operations");
 
-                    match e.op {
-                        Op::Add => {
-                            return Ok(LLVMValue::Float(self.builder.build_float_add(lhs, rhs, "addtmp")));
-                        }
-                        Op::Sub => {
-                            return Ok(LLVMValue::Float(self.builder.build_float_sub(lhs, rhs, "subtmp")));
-                        }
-                        Op::Mul => {
-                            return Ok(LLVMValue::Float(self.builder.build_float_mul(lhs, rhs, "multmp")));
-                        }
-                        Op::Div => {
-                            return Ok(LLVMValue::Float(self.builder.build_float_div(lhs, rhs, "divtmp")));
-                        }
-                        Op::Mod => {
-                            return Ok(LLVMValue::Float(self.builder.build_float_rem(lhs, rhs, "modtmp")));
-                        }
-                        Op::Gt => {
-                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OGT, lhs, rhs, "gttmp")));
-                        }
-                        Op::Lt => {
-                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OLT, lhs, rhs, "lttmp")));
-                        }
-                        Op::Eqt => {
-                            return Ok(LLVMValue::Int(self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, lhs, rhs, "eqttmp")));
-                        }
+                match e.op {
+                    Op::Add => {
+                        return Ok(LLVMValue::Float(
+                            self.builder.build_float_add(lhs, rhs, "addtmp"),
+                        ));
+                    }
+                    Op::Sub => {
+                        return Ok(LLVMValue::Float(
+                            self.builder.build_float_sub(lhs, rhs, "subtmp"),
+                        ));
+                    }
+                    Op::Mul => {
+                        return Ok(LLVMValue::Float(
+                            self.builder.build_float_mul(lhs, rhs, "multmp"),
+                        ));
+                    }
+                    Op::Div => {
+                        return Ok(LLVMValue::Float(
+                            self.builder.build_float_div(lhs, rhs, "divtmp"),
+                        ));
+                    }
+                    Op::Mod => {
+                        return Ok(LLVMValue::Float(
+                            self.builder.build_float_rem(lhs, rhs, "modtmp"),
+                        ));
+                    }
+                    Op::Gt => {
+                        return Ok(LLVMValue::Int(self.builder.build_float_compare(
+                            inkwell::FloatPredicate::OGT,
+                            lhs,
+                            rhs,
+                            "gttmp",
+                        )));
+                    }
+                    Op::Lt => {
+                        return Ok(LLVMValue::Int(self.builder.build_float_compare(
+                            inkwell::FloatPredicate::OLT,
+                            lhs,
+                            rhs,
+                            "lttmp",
+                        )));
+                    }
+                    Op::Eqt => {
+                        return Ok(LLVMValue::Int(self.builder.build_float_compare(
+                            inkwell::FloatPredicate::OEQ,
+                            lhs,
+                            rhs,
+                            "eqttmp",
+                        )));
                     }
                 }
-                Node::BindExpr(e) => {
-                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value");
-                
-                    let f64_type = self.context.f64_type();
-                    let alloca = self.builder.build_alloca(f64_type, &e.name.as_str());
-                    self.builder.build_store(alloca, value);
-                
-                    self.variables
-                        .last_mut()
-                        .expect("No variable scopes found")
-                        .insert(e.name.to_string(), alloca);
-                }
-                Node::Variable(name) => {
-                    let f64_type = self.context.f64_type();
-                    let alloca = self.variables
-                        .last()
-                        .expect("No variable scopes found")
-                        .get(name)
-                        .expect(format!("Variable '{}' not found!", name).as_str());
-                
-                    let loaded_value = self.builder.build_load(f64_type, *alloca, &name);
-                
-                    return Ok(LLVMValue::Float(loaded_value.into_float_value()));
-                }
-                 
-                Node::ReturnExpr(e) => {
-                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
+            }
+            Node::BindExpr(e) => {
+                let value = self
+                    .gen_body(&e.value)?
+                    .as_float()
+                    .expect("Expected float value");
 
-                    self.builder.build_return(Some(&value));
-                    return Ok(LLVMValue::Float(value));
-                }
-                Node::MutateExpr(e) => {
-                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
-                    let alloca = self.variables
-                                    .last()             
-                                    .expect("No variable scopes found")
-                                    .get(&e.name)
-                    .expect(format!("Variable '{}' not found to mutate!", e.name).as_str());
+                let f64_type = self.context.f64_type();
+                let alloca = self.builder.build_alloca(f64_type, e.name.as_str());
+                self.builder.build_store(alloca, value);
 
-                    self.builder.build_store(*alloca, value);
+                self.variables
+                    .last_mut()
+                    .expect("No variable scopes found")
+                    .insert(e.name.to_string(), alloca);
+            }
+            Node::Variable(name) => {
+                let f64_type = self.context.f64_type();
+                let alloca = self
+                    .variables
+                    .last()
+                    .expect("No variable scopes found")
+                    .get(name)
+                    .unwrap_or_else(|| panic!("Variable '{}' not found!", name));
+
+                let loaded_value = self.builder.build_load(f64_type, *alloca, name);
+
+                return Ok(LLVMValue::Float(loaded_value.into_float_value()));
+            }
+
+            Node::ReturnExpr(e) => {
+                let value = self
+                    .gen_body(&e.value)?
+                    .as_float()
+                    .expect("Expected float value. Comparisons cannot be used for operations");
+
+                self.builder.build_return(Some(&value));
+                return Ok(LLVMValue::Float(value));
+            }
+            Node::MutateExpr(e) => {
+                let value = self
+                    .gen_body(&e.value)?
+                    .as_float()
+                    .expect("Expected float value. Comparisons cannot be used for operations");
+                let alloca = self
+                    .variables
+                    .last()
+                    .expect("No variable scopes found")
+                    .get(&e.name)
+                    .unwrap_or_else(|| panic!("Variable '{}' not found to mutate!", e.name));
+
+                self.builder.build_store(*alloca, value);
+            }
+            Node::WhileExpr(e) => {
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
+
+                let loop_cond_bb = self.context.append_basic_block(function, "loop_cond");
+                let loop_body_bb = self.context.append_basic_block(function, "loop_body");
+                let loop_end_bb = self.context.append_basic_block(function, "loop_end");
+
+                // Start from the current position (should be the end of the entry block or the previous block)
+                self.builder.build_unconditional_branch(loop_cond_bb);
+
+                // Now, handle the loop condition
+                self.builder.position_at_end(loop_cond_bb);
+                let cond = self
+                    .gen_body(&e.condition)?
+                    .as_int()
+                    .expect("Expected int value. Other operations cannot be used for comparisons");
+                self.builder
+                    .build_conditional_branch(cond, loop_body_bb, loop_end_bb);
+
+                // Generate the loop body
+                self.builder.position_at_end(loop_body_bb);
+                for node in e.body.iter() {
+                    self.gen_expr(node)?;
                 }
-                Node::WhileExpr(e) => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-                
-                    let loop_cond_bb = self.context.append_basic_block(function, "loop_cond");
-                    let loop_body_bb = self.context.append_basic_block(function, "loop_body");
-                    let loop_end_bb = self.context.append_basic_block(function, "loop_end");
-                
-                    // Start from the current position (should be the end of the entry block or the previous block)
-                    self.builder.build_unconditional_branch(loop_cond_bb);
-                
-                    // Now, handle the loop condition
-                    self.builder.position_at_end(loop_cond_bb);
-                    let cond = self.gen_body(&e.condition, false)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
-                    self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
-                
-                    // Generate the loop body
-                    self.builder.position_at_end(loop_body_bb);
-                    for node in e.body.iter() {
-                        self.gen_expr(node)?;
+                self.builder.build_unconditional_branch(loop_cond_bb);
+
+                // Position builder at the end block after the loop
+                self.builder.position_at_end(loop_end_bb);
+            }
+            Node::IfExpr(e) => {
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
+
+                let if_cond_bb = self.context.append_basic_block(function, "if_cond");
+                let then_bb = self.context.append_basic_block(function, "then_block");
+                let else_bb = if !e.else_body.is_empty() {
+                    Some(self.context.append_basic_block(function, "else_block"))
+                } else {
+                    None
+                };
+
+                let end_if_bb = self.context.append_basic_block(function, "end_if");
+
+                // Start from the current position (should be the end of the entry block or the previous block)
+                self.builder.build_unconditional_branch(if_cond_bb);
+
+                // Evaluate the condition
+                self.builder.position_at_end(if_cond_bb);
+                let cond = self
+                    .gen_body(&e.condition)?
+                    .as_int()
+                    .expect("Expected int value. Other operations cannot be used for comparisons");
+
+                match else_bb {
+                    Some(else_block) => {
+                        self.builder
+                            .build_conditional_branch(cond, then_bb, else_block);
                     }
-                    self.builder.build_unconditional_branch(loop_cond_bb);
-                
-                    // Position builder at the end block after the loop
-                    self.builder.position_at_end(loop_end_bb);
-                }                
-                Node::IfExpr(e) => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-                
-                    let if_cond_bb = self.context.append_basic_block(function, "if_cond");
-                    let then_bb = self.context.append_basic_block(function, "then_block");
-                    let else_bb = if !e.else_body.is_empty() {
-                        Some(self.context.append_basic_block(function, "else_block"))
-                    } else {
-                        None
-                    };
-
-                    let end_if_bb = self.context.append_basic_block(function, "end_if");
-
-                    // Start from the current position (should be the end of the entry block or the previous block)
-                    self.builder.build_unconditional_branch(if_cond_bb);
-                
-                    // Evaluate the condition
-                    self.builder.position_at_end(if_cond_bb);
-                    let cond = self.gen_body(&e.condition, false)?.as_int().expect("Expected int value. Other operations cannot be used for comparisons");
-                    
-                    match else_bb {
-                        Some(else_block) => {
-                            self.builder.build_conditional_branch(cond, then_bb, else_block);
-                        },
-                        None => {
-                            self.builder.build_conditional_branch(cond, then_bb, end_if_bb);
-                        }
+                    None => {
+                        self.builder
+                            .build_conditional_branch(cond, then_bb, end_if_bb);
                     }
-                
-                    // Generate then block
-                    self.builder.position_at_end(then_bb);
-                    for node in e.body.iter() {
+                }
+
+                // Generate then block
+                self.builder.position_at_end(then_bb);
+                for node in e.body.iter() {
+                    self.gen_expr(node)?;
+                }
+                self.builder.build_unconditional_branch(end_if_bb);
+
+                // Generate else block if it exists
+                if let Some(else_bb) = else_bb {
+                    self.builder.position_at_end(else_bb);
+                    for node in e.else_body.iter() {
                         self.gen_expr(node)?;
                     }
                     self.builder.build_unconditional_branch(end_if_bb);
-                
-                    // Generate else block if it exists
-                    if else_bb.is_some() {
-                        self.builder.position_at_end(else_bb.unwrap());
-                        for node in e.else_body.iter() {
-                            self.gen_expr(node)?;
-                        }
-                        self.builder.build_unconditional_branch(end_if_bb); 
-                    }
-                
-                    // Position builder at the end block after the if statement
-                    self.builder.position_at_end(end_if_bb);
                 }
-                Node::FnExpr(e) => {
-                    // Save the current block so we can restore it later.
-                    let current_block = self.builder.get_insert_block().unwrap();
 
-                    let function = self.compile_prototype(e)?;
+                // Position builder at the end block after the if statement
+                self.builder.position_at_end(end_if_bb);
+            }
+            Node::FnExpr(e) => {
+                // Save the current block so we can restore it later.
+                let current_block = self.builder.get_insert_block().unwrap();
 
-                    // got external function, returning only compiled prototype
-                    // if self.function.body.is_none() {
-                    //     return Ok(function);
-                    // }
+                let function = self.compile_prototype(e)?;
 
-                    let entry = self.context.append_basic_block(function, "entry");
+                // got external function, returning only compiled prototype
+                // if self.function.body.is_none() {
+                //     return Ok(function);
+                // }
 
-                    self.builder.position_at_end(entry);
+                let entry = self.context.append_basic_block(function, "entry");
 
-                    self.fn_value_opt = Some(function);
+                self.builder.position_at_end(entry);
 
-                    // build variables map
-                    self.variables.push(HashMap::new());
-                    self.variables.reserve(e.args.len());
+                self.fn_value_opt = Some(function);
 
-                    // all paramters will be mutable by default
-                    // so we need to create alloca for each of them
-                    for (i, arg) in function.get_param_iter().enumerate() {
-                        let arg_name = if let Node::Variable(name) = &e.args[i] {
-                            name
-                        } else {
-                            panic!("Expected variable name")
-                        };
-                        let alloca = self.create_entry_block_alloca(arg_name);
+                // build variables map
+                self.variables.push(HashMap::new());
+                self.variables.reserve(e.args.len());
 
-                        self.builder.build_store(alloca, arg);
-
-                        self.variables
-                            .last_mut()
-                            .expect("No variable scopes found")
-                            .insert(arg_name.to_string(), alloca);
-                    }
-
-                    // compile body
-                    let _body = self.gen_body(&e.body, false)?;
-
-                    self.builder.position_at_end(current_block);
-                    self.variables.pop();
-
-                    // return the whole thing after verification and optimization
-                    if function.verify(true) {
-                        self.fpm.run_on(&function);
-
-                        // return Ok(function)
+                // all paramters will be mutable by default
+                // so we need to create alloca for each of them
+                for (i, arg) in function.get_param_iter().enumerate() {
+                    let arg_name = if let Node::Variable(name) = &e.args[i] {
+                        name
                     } else {
-                        unsafe {
-                            function.delete();
-                        }
-
-                        return Err("Invalid generated function.")
-                    }
-
-                }
-                Node::FnCallExpr(e) => {
-                    let mut compiled_args = Vec::with_capacity(e.args.len());
-
-                    for arg in &e.args {
-                        compiled_args.push(self.gen_expr(&arg)?.as_float().unwrap());
-                    }
-
-                    let argsv: Vec<BasicMetadataValueEnum> =
-                        compiled_args.iter().by_ref().map(|&val| val.into()).collect();
-
-                    let function = self.module.get_function(&e.name).expect("Function not found");
-
-                    match self
-                        .builder
-                        .build_call(function, argsv.as_slice(), "tmp")
-                        .try_as_basic_value()
-                        .left()
-                    {
-                        Some(value) => return Ok(LLVMValue::Float(value.into_float_value())),
-                        None => return Err("Invalid call produced."),
+                        panic!("Expected variable name")
                     };
-                }  
-                Node::PrintStdoutExpr(e) => {
-                    let value = self.gen_body(&e.value, false)?.as_float().expect("Expected float value for print");
-                    let print_fn = self.module.get_function("print_f64")
-                                    .unwrap_or_else(|| {
-                                        let fn_type = self.context.f64_type().fn_type(&[self.context.f64_type().into()], false);
-                                        self.module.add_function("print_f64", fn_type, None)
-                                    });
-                    self.builder.build_call(print_fn, &[value.into()], "printcall");
+                    let alloca = self.create_entry_block_alloca(arg_name);
+
+                    self.builder.build_store(alloca, arg);
+
+                    self.variables
+                        .last_mut()
+                        .expect("No variable scopes found")
+                        .insert(arg_name.to_string(), alloca);
                 }
-                
-            }
-            Ok(LLVMValue::Float(self.context.f64_type().const_float(0.0)))
-        }
 
-        #[inline]
-        fn fn_value(&self) -> FunctionValue<'ctx> {
-            self.fn_value_opt.unwrap()
-        }
+                // compile body
+                let _body = self.gen_body(&e.body)?;
 
-        fn create_entry_block_alloca(&self, name: &str) -> PointerValue<'ctx> {
-            let builder = self.context.create_builder();
-    
-            let entry = self.fn_value().get_first_basic_block().unwrap();
-    
-            match entry.get_first_instruction() {
-                Some(first_instr) => builder.position_before(&first_instr),
-                None => builder.position_at_end(entry),
-            }
-    
-            builder.build_alloca(self.context.f64_type(), name)
-        }
+                self.builder.position_at_end(current_block);
+                self.variables.pop();
 
-        fn compile_prototype(&mut self, proto: &FnExpr) -> Result<FunctionValue<'ctx>, &'static str> {
-            let ret_type = self.context.f64_type();
-            let args_types = std::iter::repeat(ret_type)
-                .take(proto.args.len())
-                .map(|f| f.into())
-                .collect::<Vec<BasicMetadataTypeEnum>>();
-            let args_types = args_types.as_slice();
-    
-            let fn_type = self.context.f64_type().fn_type(args_types, false);
-            let fn_val = self.module.add_function(proto.name.as_str(), fn_type, None);
-    
-            // set arguments names
-            for (i, arg) in fn_val.get_param_iter().enumerate() {
-                let name = if let Node::Variable(name) = &proto.args[i] {
-                    name
+                // return the whole thing after verification and optimization
+                if function.verify(true) {
+                    self.fpm.run_on(&function);
+
+                    // return Ok(function)
                 } else {
-                    panic!("Expected variable name")
+                    unsafe {
+                        function.delete();
+                    }
+
+                    return Err("Invalid generated function.");
+                }
+            }
+            Node::FnCallExpr(e) => {
+                let mut compiled_args = Vec::with_capacity(e.args.len());
+
+                for arg in &e.args {
+                    compiled_args.push(self.gen_expr(arg)?.as_float().unwrap());
+                }
+
+                let argsv: Vec<BasicMetadataValueEnum> = compiled_args
+                    .iter()
+                    .by_ref()
+                    .map(|&val| val.into())
+                    .collect();
+
+                let function = self
+                    .module
+                    .get_function(&e.name)
+                    .expect("Function not found");
+
+                match self
+                    .builder
+                    .build_call(function, argsv.as_slice(), "tmp")
+                    .try_as_basic_value()
+                    .left()
+                {
+                    Some(value) => return Ok(LLVMValue::Float(value.into_float_value())),
+                    None => return Err("Invalid call produced."),
                 };
-                arg.set_name(name);
-            }            
-    
-            // finally return built prototype
-            Ok(fn_val)
+            }
+            Node::PrintStdoutExpr(e) => {
+                let value = self
+                    .gen_body(&e.value)?
+                    .as_float()
+                    .expect("Expected float value for print");
+                let print_fn = self.module.get_function("print_f64").unwrap_or_else(|| {
+                    let fn_type = self
+                        .context
+                        .f64_type()
+                        .fn_type(&[self.context.f64_type().into()], false);
+                    self.module.add_function("print_f64", fn_type, None)
+                });
+                self.builder
+                    .build_call(print_fn, &[value.into()], "printcall");
+            }
+        }
+        Ok(LLVMValue::Float(self.context.f64_type().const_float(0.0)))
+    }
+
+    #[inline]
+    fn fn_value(&self) -> FunctionValue<'ctx> {
+        self.fn_value_opt.unwrap()
+    }
+
+    fn create_entry_block_alloca(&self, name: &str) -> PointerValue<'ctx> {
+        let builder = self.context.create_builder();
+
+        let entry = self.fn_value().get_first_basic_block().unwrap();
+
+        match entry.get_first_instruction() {
+            Some(first_instr) => builder.position_before(&first_instr),
+            None => builder.position_at_end(entry),
+        }
+
+        builder.build_alloca(self.context.f64_type(), name)
+    }
+
+    fn compile_prototype(&mut self, proto: &FnExpr) -> Result<FunctionValue<'ctx>, &'static str> {
+        let ret_type = self.context.f64_type();
+        let args_types = std::iter::repeat(ret_type)
+            .take(proto.args.len())
+            .map(|f| f.into())
+            .collect::<Vec<BasicMetadataTypeEnum>>();
+        let args_types = args_types.as_slice();
+
+        let fn_type = self.context.f64_type().fn_type(args_types, false);
+        let fn_val = self.module.add_function(proto.name.as_str(), fn_type, None);
+
+        // set arguments names
+        for (i, arg) in fn_val.get_param_iter().enumerate() {
+            let name = if let Node::Variable(name) = &proto.args[i] {
+                name
+            } else {
+                panic!("Expected variable name")
+            };
+            arg.set_name(name);
+        }
+
+        // finally return built prototype
+        Ok(fn_val)
     }
 }
 
@@ -427,11 +522,18 @@ impl Compile for LLVMCompiler<'_, '_> {
         }
 
         if config.use_jit {
-            Target::initialize_native(&InitializationConfig::default()).expect("Failed to initialize native target");
+            Target::initialize_native(&InitializationConfig::default())
+                .expect("Failed to initialize native target");
 
-            let execution_engine = module.create_jit_execution_engine(inkwell::OptimizationLevel::Aggressive).expect("Failed to create JIT execution engine");
+            let execution_engine = module
+                .create_jit_execution_engine(inkwell::OptimizationLevel::Aggressive)
+                .expect("Failed to create JIT execution engine");
 
-            let main_func = unsafe { execution_engine.get_function::<unsafe extern "C" fn() -> f64>("main").expect("Failed to get main function") };
+            let main_func = unsafe {
+                execution_engine
+                    .get_function::<unsafe extern "C" fn() -> f64>("main")
+                    .expect("Failed to get main function")
+            };
             let result = unsafe { main_func.call() };
             return Ok(result);
         }
@@ -446,9 +548,21 @@ impl Compile for LLVMCompiler<'_, '_> {
         let temp_path = Path::new(&tempname);
 
         let target_triple = inkwell::targets::TargetMachine::get_default_triple();
-        let target = inkwell::targets::Target::from_triple(&target_triple).expect("Error getting target from triple");
-        let target_machine = target.create_target_machine(&target_triple, "generic", "", inkwell::OptimizationLevel::Aggressive, RelocMode::Default, CodeModel::Default).expect("Error creating target machine");
-        target_machine.write_to_file(&module, inkwell::targets::FileType::Object, &temp_path).expect("Error writing object file");
+        let target = inkwell::targets::Target::from_triple(&target_triple)
+            .expect("Error getting target from triple");
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                "generic",
+                "",
+                inkwell::OptimizationLevel::Aggressive,
+                RelocMode::Default,
+                CodeModel::Default,
+            )
+            .expect("Error creating target machine");
+        target_machine
+            .write_to_file(&module, inkwell::targets::FileType::Object, temp_path)
+            .expect("Error writing object file");
 
         let output = Command::new("clang")
             .arg(temp_path)
@@ -475,7 +589,7 @@ impl Compile for LLVMCompiler<'_, '_> {
 
 fn optimize_ir(fpm: &PassManager<FunctionValue>, opt_level: inkwell::OptimizationLevel) {
     match opt_level {
-        inkwell::OptimizationLevel::None => { return }
+        inkwell::OptimizationLevel::None => return,
         inkwell::OptimizationLevel::Aggressive => {
             fpm.add_instruction_combining_pass();
             fpm.add_reassociate_pass();
@@ -496,7 +610,7 @@ fn optimize_ir(fpm: &PassManager<FunctionValue>, opt_level: inkwell::Optimizatio
             fpm.add_memcpy_optimize_pass();
 
             // Since x86-64 platforms have good vector instruction sets
-            fpm.add_slp_vectorize_pass();  // Try to vectorize straight-line code
+            fpm.add_slp_vectorize_pass(); // Try to vectorize straight-line code
 
             // Again, it's good to sometimes rerun some passes after other optimizations
             fpm.add_instruction_combining_pass();
@@ -532,7 +646,7 @@ fn compute_hash<T: Hash>(t: &T) -> u64 {
 }
 
 #[no_mangle]
-#[must_use]
+
 pub extern "C" fn print_f64(value: f64) {
-    print!("{}\n", value);
+    println!("{}", value);
 }

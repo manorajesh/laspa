@@ -1,6 +1,6 @@
 use clap::Parser;
 use env_logger::Builder;
-use laspa::{CompileConfig, Interpreter, Compile, Compiler};
+use laspa::{Compile, CompileConfig, Compiler, Interpreter};
 use log::LevelFilter;
 
 mod args;
@@ -14,7 +14,7 @@ fn main() {
         1 => LevelFilter::Warn,
         2 => LevelFilter::Info,
         3 => LevelFilter::Debug,
-        4 | _ => LevelFilter::Trace,  // 4 and above are trace
+        _ => LevelFilter::Trace, // 4 and above are trace
     };
 
     // Set up logging
@@ -22,10 +22,10 @@ fn main() {
         .filter(None, log_level)
         .default_format()
         .init();
-    
+
     if args.optimization_level > 3 {
         log::error!("Error: optimization_level should be between 0 (none) and 3 (aggressive).");
-        return
+        return;
     }
 
     let config = CompileConfig {

@@ -6,7 +6,7 @@ use clap::ValueHint;
     author,
     version,
     about = "A simple Lisp-like language built with Rust",
-    long_about = "A simple Lisp-like language built with Rust. It is a toy language and is not meant to be used in production, but it features JIT and AOT compilation with LLVM",
+    long_about = "A simple Lisp-like language built with Rust. It is a toy language and is not meant to be used in production, but it features JIT and AOT compilation with LLVM"
 )]
 pub struct Args {
     /// The file to build
