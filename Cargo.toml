@@ -17,3 +17,6 @@ exclude = ["examples", ".github"]
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0"] }
 lazy_static = { version = "1.4.0", default-features = false }
 regex = { version = "1.9.3", default-features = false }
+
+[lib]
+crate-type = ["staticlib"]

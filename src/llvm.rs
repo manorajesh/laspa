@@ -1,7 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue, BasicMetadataValueEnum, PointerValue}, targets::{Target, InitializationConfig}, types::BasicMetadataTypeEnum};
-
+use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue, BasicMetadataValueEnum, PointerValue}, targets::{Target, InitializationConfig, RelocMode, CodeModel}, types::BasicMetadataTypeEnum};
 use crate::{Compile, Node, Op, CompileConfig, FnExpr};
 
 pub enum LLVMValue<'ctx> {
@@ -178,7 +177,10 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                 Node::ReturnExpr(e) => {
                     let value = self.gen_body(&e.value)?.as_float().expect("Expected float value. Comparisons cannot be used for operations");
 
-                    self.builder.build_return(Some(&value));
+                    if self.fn_value().get_name().to_str().unwrap() != "main" {
+                        self.builder.build_return(Some(&value));
+                        return Ok(LLVMValue::Float(value));
+                    }
                     return Ok(LLVMValue::Float(value));
                 }
                 Node::MutateExpr(e) => {
@@ -345,9 +347,16 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                         None => return Err("Invalid call produced."),
                     };
                 }  
-                Node::PrintStdoutExpr(_e) => {
-                    todo!("Return expression")
+                Node::PrintStdoutExpr(e) => {
+                    let value = self.gen_body(&e.value)?.as_float().expect("Expected float value for print");
+                    let print_fn = self.module.get_function("print_f64")
+                                    .unwrap_or_else(|| {
+                                        let fn_type = self.context.f64_type().fn_type(&[self.context.f64_type().into()], false);
+                                        self.module.add_function("print_f64", fn_type, None)
+                                    });
+                    self.builder.build_call(print_fn, &[value.into()], "printcall");
                 }
+                
             }
             Ok(LLVMValue::Float(self.context.f64_type().const_float(0.0)))
         }
@@ -428,6 +437,21 @@ impl Compile for LLVMCompiler<'_, '_> {
         let path = Path::new("output.ll");
         module.print_to_file(&path).expect("Error writing file");
 
+        module.verify().expect("Error verifying module");
+
+        let path = Path::new("output.o");
+        let target_triple = inkwell::targets::TargetMachine::get_default_triple();
+        let target = inkwell::targets::Target::from_triple(&target_triple).expect("Error getting target from triple");
+        let target_machine = target.create_target_machine(&target_triple, "generic", "", inkwell::OptimizationLevel::None, RelocMode::Default, CodeModel::Default).expect("Error creating target machine");
+        target_machine.write_to_file(&module, inkwell::targets::FileType::Object, &path).expect("Error writing object file");
+
+
         Ok(0.0)
     }
+}
+
+#[no_mangle]
+#[must_use]
+pub extern "C" fn print_f64(value: f64) {
+    print!("{}\n", value);
 }
