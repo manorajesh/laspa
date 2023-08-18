@@ -857,7 +857,6 @@ impl CompileConfig {
                          else
                              := n + * 3 n 1
                          end
-                         := n n
                      end
                      return n
                  end

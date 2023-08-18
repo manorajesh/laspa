@@ -258,6 +258,7 @@ impl<'a, 'ctx> LLVMCompiler<'a, 'ctx> {
                         for node in e.else_body.iter() {
                             self.gen_expr(node)?;
                         }
+                        self.builder.build_unconditional_branch(end_if_bb); 
                     }
                 
                     // Position builder at the end block after the if statement

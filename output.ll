@@ -43,9 +43,8 @@ else_block:                                       ; preds = %if_cond
   %multmp = fmul double 3.000000e+00, %n5
   %addtmp = fadd double %multmp, 1.000000e+00
   store double %addtmp, ptr %n1, align 8
+  br label %end_if
 
-end_if:                                           ; preds = %then_block
-  %x = alloca double, align 8
-  store double 0.000000e+00, ptr %x, align 8
+end_if:                                           ; preds = %else_block, %then_block
   br label %loop_cond
 }
