@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::{HashMap, hash_map::DefaultHasher}, path::Path, hash::{Hash, Hasher}, process::Command, fs};
 
 use inkwell::{self, context::Context, module::Module, builder::Builder, passes::PassManager, values::{FunctionValue, FloatValue, IntValue, BasicMetadataValueEnum, PointerValue}, targets::{Target, InitializationConfig, RelocMode, CodeModel}, types::BasicMetadataTypeEnum};
 use crate::{Compile, Node, Op, CompileConfig, FnExpr};
@@ -413,6 +413,9 @@ impl Compile for LLVMCompiler<'_, '_> {
         let module = context.create_module("main");
         let fpm = PassManager::create(&module);
 
+        // Optimization passes
+        optimize_ir(&fpm, inkwell::OptimizationLevel::Aggressive);
+
         let mut compiler = LLVMCompiler::new(&context, &builder, &module, &fpm);
 
         compiler.codegen(nodes).expect("Failed to generate IR");
@@ -433,20 +436,99 @@ impl Compile for LLVMCompiler<'_, '_> {
             return Ok(result);
         }
 
-        let path = Path::new("output.ll");
-        module.print_to_file(&path).expect("Error writing file");
+        // let path = Path::new("output.ll");
+        // module.print_to_file(&path).expect("Error writing file");
 
         module.verify().expect("Error verifying module");
 
-        let path = Path::new("output.o");
+        let hash = compute_hash(&module.to_string());
+        let tempname = format!("output-{hash}.o");
+        let temp_path = Path::new(&tempname);
+
         let target_triple = inkwell::targets::TargetMachine::get_default_triple();
         let target = inkwell::targets::Target::from_triple(&target_triple).expect("Error getting target from triple");
-        let target_machine = target.create_target_machine(&target_triple, "generic", "", inkwell::OptimizationLevel::None, RelocMode::Default, CodeModel::Default).expect("Error creating target machine");
-        target_machine.write_to_file(&module, inkwell::targets::FileType::Object, &path).expect("Error writing object file");
+        let target_machine = target.create_target_machine(&target_triple, "generic", "", inkwell::OptimizationLevel::Aggressive, RelocMode::Default, CodeModel::Default).expect("Error creating target machine");
+        target_machine.write_to_file(&module, inkwell::targets::FileType::Object, &temp_path).expect("Error writing object file");
 
+        let output = Command::new("clang")
+            .arg(temp_path)
+            .arg("target/release/liblaspa.a")
+            .arg("-o")
+            .arg("main")
+            .output()
+            .expect("Failed to run clang");
+
+        if !output.status.success() {
+            eprintln!(
+                "Clang failed with error:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            return Err("Clang failed");
+        }
+
+        fs::remove_file(temp_path).expect("Error removing temp file");
 
         Ok(0.0)
     }
+}
+
+fn optimize_ir(fpm: &PassManager<FunctionValue>, opt_level: inkwell::OptimizationLevel) {
+    match opt_level {
+        inkwell::OptimizationLevel::None => { return }
+        inkwell::OptimizationLevel::Aggressive => {
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
+            fpm.add_basic_alias_analysis_pass();
+            fpm.add_promote_memory_to_register_pass();
+
+            // Dead code elimination
+            fpm.add_dead_store_elimination_pass();
+
+            // Loop Optimizations
+            fpm.add_loop_rotate_pass();
+            fpm.add_loop_unroll_pass();
+            fpm.add_loop_vectorize_pass();
+
+            // Memory Optimization
+            fpm.add_memcpy_optimize_pass();
+
+            // Since x86-64 platforms have good vector instruction sets
+            fpm.add_slp_vectorize_pass();  // Try to vectorize straight-line code
+
+            // Again, it's good to sometimes rerun some passes after other optimizations
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+        }
+        inkwell::OptimizationLevel::Default => {
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
+            fpm.add_basic_alias_analysis_pass();
+            fpm.add_promote_memory_to_register_pass();
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+        }
+        inkwell::OptimizationLevel::Less => {
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
+            fpm.add_basic_alias_analysis_pass();
+            fpm.add_promote_memory_to_register_pass();
+        }
+    }
+
+    fpm.initialize();
+}
+
+fn compute_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }
 
 #[no_mangle]
