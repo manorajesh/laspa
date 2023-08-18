@@ -58,6 +58,7 @@ assert_eq!(result, 3.0);
 
 mod llvm;
 
+use indicatif::ProgressBar;
 use lazy_static::lazy_static;
 use regex::{Regex, Split};
 use std::{collections::HashMap, str::SplitWhitespace};
@@ -467,6 +468,7 @@ pub struct CompileConfig {
     pub show_ir: bool,
     pub optimization_level: u8,
     pub name: String,
+    pub progress: ProgressBar,
 }
 
 impl CompileConfig {
@@ -476,6 +478,7 @@ impl CompileConfig {
             show_ir,
             optimization_level: 1,
             name: String::from("main"),
+            progress: ProgressBar::new(0),
         }
     }
 }
@@ -491,16 +494,25 @@ pub trait Compile {
 
     /// Compile a string into the output type.
     fn from_source(source: &str, config: &CompileConfig) -> Self::Output {
+        config.progress.set_message("Lexing source");
         let mut tokens = lex(source);
         log::trace!("tokens: {:?}", lex(source).collect::<Vec<_>>());
+        config.progress.inc(1);
+        config.progress.set_message("Parsing tokens");
+
         let nodes = parse(&mut tokens, &mut HashMap::new());
         log::debug!("ast: {:?}", nodes);
+        
+        config.progress.inc(1);
+        config.progress.set_message("Evaluating AST");
         Self::from_ast(nodes, config)
     }
 
     /// Compile a file into the output type. Supply the crate-relative path to the file.
     fn from_file(path: &str, config: &CompileConfig) -> Self::Output {
+        config.progress.set_message("Reading file");
         let source = std::fs::read_to_string(path).unwrap();
+        config.progress.inc(1);
         Self::from_source(&source, config)
     }
 }

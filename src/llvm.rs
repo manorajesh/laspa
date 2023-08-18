@@ -518,11 +518,15 @@ impl Compile for LLVMCompiler<'_, '_> {
         let module = context.create_module("main");
         let fpm = PassManager::create(&module);
 
+        config.progress.set_message("Optimizing");
+        config.progress.inc(1);
         // Optimization passes
         optimize_ir(&fpm, inkwell::OptimizationLevel::Aggressive);
 
         let mut compiler = LLVMCompiler::new(&context, &builder, &module, &fpm);
 
+        config.progress.set_message("Compiling AST");
+        config.progress.inc(1);
         compiler.codegen(nodes).log_expect("Failed to generate IR");
 
         if config.show_ir {
@@ -535,6 +539,8 @@ impl Compile for LLVMCompiler<'_, '_> {
                 .log_expect("Failed to initialize native target");
 
         if config.use_jit {
+            config.progress.set_message("Running JIT");
+            config.progress.inc(1);
             let execution_engine = module
                 .create_jit_execution_engine(inkwell::OptimizationLevel::Aggressive)
                 .log_expect("Failed to create JIT execution engine");
@@ -551,12 +557,16 @@ impl Compile for LLVMCompiler<'_, '_> {
         // let path = Path::new("output.ll");
         // module.print_to_file(&path).log_expect("Error writing file");
 
+        config.progress.set_message("Verifying");
+        config.progress.inc(1);
         module.verify().log_expect("Error verifying module");
 
         let hash = compute_hash(&module.to_string());
         let tempname = format!("output-{hash}.o");
         let temp_path = Path::new(&tempname);
 
+        config.progress.set_message("Writing object file");
+        config.progress.inc(1);
         let target_triple = inkwell::targets::TargetMachine::get_default_triple();
         let target = inkwell::targets::Target::from_triple(&target_triple)
             .log_expect("Error getting target from triple");
@@ -574,6 +584,8 @@ impl Compile for LLVMCompiler<'_, '_> {
             .write_to_file(&module, inkwell::targets::FileType::Object, temp_path)
             .log_expect("Error writing object file");
 
+        config.progress.set_message("Linking");
+        config.progress.inc(1);
         let output = Command::new("clang")
             .arg(temp_path)
             .arg("target/release/liblaspa.a")
@@ -591,6 +603,8 @@ impl Compile for LLVMCompiler<'_, '_> {
             return Err("Clang failed");
         }
 
+        config.progress.set_message("Deleting temp file");
+        config.progress.inc(1);
         fs::remove_file(temp_path).log_expect("Error removing temp file");
 
         Ok(0.0)

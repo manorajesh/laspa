@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use clap::Parser;
 use env_logger::Builder;
+use indicatif::{ProgressBar, ProgressStyle};
 use laspa::{Compile, CompileConfig, Compiler, Interpreter};
 use log::LevelFilter;
 
@@ -38,7 +41,11 @@ fn main() {
         optimization_level: args.optimization_level,
         show_ir: true,
         name: args.executable_name,
+        progress: ProgressBar::new(10),
     };
+
+    config.progress.enable_steady_tick(Duration::from_millis(50));
+    config.progress.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/white} {pos:>7}/{len:7} {msg} {spinner}").unwrap().progress_chars("==>-"));
 
     if args.interpret {
         log::info!("Interpreting file {}", args.file);
@@ -51,4 +58,8 @@ fn main() {
             log::error!("Error: {}", e);
         }
     }
+
+    config.progress.set_message("Done!");
+    log::info!("Done");
+    config.progress.finish();
 }
