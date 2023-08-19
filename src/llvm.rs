@@ -677,7 +677,7 @@ pub extern "C" fn print_f64(value: f64) {
     println!("{}", value);
 }
 
-trait LogExpect<T> {
+pub trait LogExpect<T> {
     fn log_expect(self, msg: &str) -> T;
 }
 
@@ -700,8 +700,13 @@ where E: std::fmt::Display
         match self {
             Ok(val) => val,
             Err(e) => {
-                log::error!("{}", msg);
-                log::error!("{}", e);
+                if msg.is_empty() {
+                    log::error!("{}", e);
+                } else {
+                    log::error!("{}", msg);
+                    log::error!("{}", e);
+                }
+                
                 std::process::exit(1);
             }
         }

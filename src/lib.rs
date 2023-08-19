@@ -60,6 +60,7 @@ mod llvm;
 
 use indicatif::ProgressBar;
 use lazy_static::lazy_static;
+use llvm::LogExpect;
 use regex::{Regex, Split};
 use std::{collections::HashMap, str::SplitWhitespace};
 
@@ -194,7 +195,7 @@ pub enum Node {
 }
 
 lazy_static! {
-    static ref RE: Regex = Regex::new(r"[;\n]").unwrap();
+    static ref RE: Regex = Regex::new(r"[;\n]").log_expect("");
 }
 
 /// Lex a string into tokens. This will split the string into tokens, which can then be parsed into an AST.
@@ -228,7 +229,7 @@ pub fn parse(
             if e.body.is_empty() {
                 let body = parse(tokens, functions);
                 let mut body = body.split(|n| n == &Node::Variable("else".to_string()));
-                e.body = body.next().unwrap().to_vec();
+                e.body = body.next().log_expect("").to_vec();
                 e.else_body = body.next().unwrap_or(&Vec::new()).to_vec();
             }
         }
@@ -255,14 +256,14 @@ fn parse_sentence(
             "+" | "-" | "*" | "/" | ">" | "<" | "%" | "==" => {
                 nodes.push(Node::BinaryExpr(BinaryExpr {
                     op: Op::new(t),
-                    lhs: parse_sentence(tokens, functions).unwrap(),
-                    rhs: parse_sentence(tokens, functions).unwrap(),
+                    lhs: parse_sentence(tokens, functions).log_expect(""),
+                    rhs: parse_sentence(tokens, functions).log_expect(""),
                 }));
             }
 
             "let" => {
-                let name = tokens.next().unwrap();
-                let value = parse_sentence(tokens, functions).unwrap();
+                let name = tokens.next().log_expect("");
+                let value = parse_sentence(tokens, functions).log_expect("");
                 nodes.push(Node::BindExpr(BindExpr {
                     name: name.to_string(),
                     value,
@@ -275,13 +276,13 @@ fn parse_sentence(
 
             "return" => {
                 nodes.push(Node::ReturnExpr(ReturnExpr {
-                    value: parse_sentence(tokens, functions).unwrap(),
+                    value: parse_sentence(tokens, functions).log_expect(""),
                 }));
             }
 
             ":=" => {
-                let name = tokens.next().unwrap();
-                let value = parse_sentence(tokens, functions).unwrap();
+                let name = tokens.next().log_expect("");
+                let value = parse_sentence(tokens, functions).log_expect("");
                 nodes.push(Node::MutateExpr(MutateExpr {
                     name: name.to_string(),
                     value,
@@ -289,13 +290,13 @@ fn parse_sentence(
             }
 
             "while" => {
-                let condition = parse_sentence(tokens, functions).unwrap();
+                let condition = parse_sentence(tokens, functions).log_expect("");
                 let body = Vec::new();
                 nodes.push(Node::WhileExpr(WhileExpr { condition, body }));
             }
 
             "if" => {
-                let condition = parse_sentence(tokens, functions).unwrap();
+                let condition = parse_sentence(tokens, functions).log_expect("");
                 let body = Vec::new();
                 let else_body = Vec::new();
                 nodes.push(Node::IfExpr(IfExpr {
@@ -306,7 +307,7 @@ fn parse_sentence(
             }
 
             "fn" => {
-                let name = tokens.next().unwrap();
+                let name = tokens.next().log_expect("");
                 let args = parse_args(tokens.collect::<Vec<_>>().join(" "), functions);
                 let body = Vec::new();
                 let expr = FnExpr {
@@ -320,7 +321,7 @@ fn parse_sentence(
 
             "print" => {
                 nodes.push(Node::PrintStdoutExpr(PrintStdoutExpr {
-                    value: parse_sentence(tokens, functions).unwrap(),
+                    value: parse_sentence(tokens, functions).log_expect(""),
                 }));
             }
 
@@ -341,7 +342,7 @@ fn parse_sentence(
         },
 
         None => {
-            log::warn!("No tokens found in statement");
+            log::warn!("No tokens found in statement; Ignoring");
             return Err("No tokens found".to_string())
         },
     }
@@ -511,7 +512,7 @@ pub trait Compile {
     /// Compile a file into the output type. Supply the crate-relative path to the file.
     fn from_file(path: &str, config: &CompileConfig) -> Self::Output {
         config.progress.set_message("Reading file");
-        let source = std::fs::read_to_string(path).unwrap();
+        let source = std::fs::read_to_string(path).log_expect("Error reading file");
         config.progress.inc(1);
         Self::from_source(&source, config)
     }
@@ -537,8 +538,8 @@ mod tests {
 
     #[test]
     fn parse_number() {
-        assert_eq!(Number::new("1.0").unwrap(), Number(1.0));
-        assert_eq!(Number::new("4").unwrap(), Number(4.0));
+        assert_eq!(Number::new("1.0").log_expect(""), Number(1.0));
+        assert_eq!(Number::new("4").log_expect(""), Number(4.0));
     }
 
     #[test]
@@ -779,7 +780,7 @@ mod tests {
     fn llvm_jit_operations() {
         let config = CompileConfig::from(true, false);
         assert_eq!(
-            llvm::LLVMCompiler::from_source("+ 1 2", &config).unwrap(),
+            llvm::LLVMCompiler::from_source("+ 1 2", &config).log_expect(""),
             3.0
         );
     }
@@ -788,7 +789,7 @@ mod tests {
     fn llvm_jit_bind_val() {
         let config = CompileConfig::from(true, false);
         assert_eq!(
-            llvm::LLVMCompiler::from_source("let x 10", &config).unwrap(),
+            llvm::LLVMCompiler::from_source("let x 10", &config).log_expect(""),
             0.0
         );
     }
@@ -797,7 +798,7 @@ mod tests {
     fn llvm_jit_variables() {
         let config = CompileConfig::from(true, false);
         assert_eq!(
-            llvm::LLVMCompiler::from_source("let x 10; + x 2", &config).unwrap(),
+            llvm::LLVMCompiler::from_source("let x 10; + x 2", &config).log_expect(""),
             12.0
         );
     }
@@ -806,7 +807,7 @@ mod tests {
     fn llvm_jit_return() {
         let config = CompileConfig::from(true, true);
         assert_eq!(
-            llvm::LLVMCompiler::from_source("let x 10; + x 2;return x", &config).unwrap(),
+            llvm::LLVMCompiler::from_source("let x 10; + x 2;return x", &config).log_expect(""),
             10.0
         );
     }
@@ -815,7 +816,7 @@ mod tests {
     fn llvm_jit_mutate() {
         let config = CompileConfig::from(true, true);
         assert_eq!(
-            llvm::LLVMCompiler::from_source("let x 10;:= x + x 2;return x", &config).unwrap(),
+            llvm::LLVMCompiler::from_source("let x 10;:= x + x 2;return x", &config).log_expect(""),
             12.0
         );
     }
@@ -841,7 +842,7 @@ mod tests {
             "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             1100.0
         );
     }
@@ -861,7 +862,7 @@ mod tests {
          "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             1.0
         );
     }
@@ -883,7 +884,7 @@ mod tests {
          "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             10.0
         );
     }
@@ -907,7 +908,7 @@ mod tests {
          "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             12.0
         );
     }
@@ -935,7 +936,7 @@ mod tests {
          "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             1.0
         );
     }
@@ -950,7 +951,7 @@ mod tests {
          "#,
                 &config
             )
-            .unwrap(),
+            .log_expect(""),
             1.0
         );
     }
