@@ -1,0 +1,16 @@
+fn fib (x)
+    let first 0
+    let second 1
+    let nth 1
+
+    let i 2
+    while < i x
+        := nth + first second
+        := first second
+        := second nth
+    end
+    return nth
+end
+
+let z fib (32)
+print z
