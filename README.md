@@ -8,8 +8,9 @@
 A toy language I designed to be as easy as possible to implement. 
 Reminiscent of [lisp](https://en.wikipedia.org/wiki/Lisp_(programming_language)), 
 läspa uses [Reverse Polish Notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation) 
-for basic arithmetic and for function calls. With a basic interpreter implemented, I plan to
-implement a compiler with the help of [LLVM](https://llvm.org/docs/LangRef.html#type-system) and plain machine-code generation.
+for basic arithmetic and for function calls. With a basic interpreter implemented and
+[LLVM](https://llvm.org/docs/LangRef.html#type-system) executables, I plan to implement
+a machine-code generation component, without using the LLVM toolchain.
 
 ## Installation
 ```shell
