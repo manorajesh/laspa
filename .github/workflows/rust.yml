@@ -11,11 +11,13 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
+    - name: Install LLVM
+      run: sudo apt-get install llvm-16
+    - name: Set Environment Variable
+      run: export LLVM_SYS_160_PREFIX=/usr 
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -27,6 +29,10 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v3
+      - name: Install LLVM
+        run: sudo apt-get install llvm-16
+      - name: Set Environment Variable
+        run: export LLVM_SYS_160_PREFIX=/usr 
       - name: Install Rust
         run: rustup update stable
       - name: Install cargo-llvm-cov
