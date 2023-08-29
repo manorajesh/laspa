@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install LLVM
-      run: sudo apt install llvm
+      run: wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 16 && sudo apt install llvm-16
     - name: Set Environment Variable
       run: export LLVM_SYS_160_PREFIX=/usr 
     - name: Build
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install LLVM
-        run: sudo apt install llvm
+        run: wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 16 && sudo apt install llvm-16
       - name: Set Environment Variable
         run: export LLVM_SYS_160_PREFIX=/usr 
       - name: Install Rust
